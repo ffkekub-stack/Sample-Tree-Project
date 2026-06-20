@@ -42,6 +42,13 @@
   .box-title.editing-active{outline:2px dashed var(--accent);}
   .box-children{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;min-height:0;}
   .box-children:empty{margin-top:0;min-height:0;}
+  .box-img-wrap{position:relative;margin-top:8px;border-radius:7px;overflow:hidden;line-height:0;}
+  .box-img-wrap img{width:100%;display:block;border-radius:7px;object-fit:cover;max-height:200px;}
+  .box-img-del{position:absolute;top:4px;right:4px;background:rgba(0,0,0,.55);color:#fff;border:none;border-radius:50%;width:22px;height:22px;font-size:13px;cursor:pointer;display:none;align-items:center;justify-content:center;line-height:1;padding:0;}
+  .box-img-wrap:hover .box-img-del{display:flex;}
+  .box-img-upload{display:flex;align-items:center;gap:6px;margin-top:8px;cursor:pointer;color:#5b8def;font-size:12px;font-weight:500;opacity:0;transition:opacity .15s;user-select:none;}
+  .box:hover .box-img-upload,.box.selected .box-img-upload{opacity:1;}
+  .box-img-upload .img-icon{font-size:16px;}
   .chip{display:inline-flex;align-items:center;gap:6px;background:#e8f0fe;border:1.5px solid #5b8def;border-radius:7px;padding:5px 10px;font-size:13px;color:#1b3a7a;font-weight:500;cursor:grab;user-select:none;white-space:nowrap;transition:box-shadow .1s,transform .1s;position:relative;}
   .chip:hover{box-shadow:0 2px 8px rgba(91,141,239,.35);transform:translateY(-1px);}
   .chip.dragging-chip{opacity:.45;transform:scale(.95);}
@@ -386,13 +393,14 @@
   let boxes=[],conns=[],idCounter=1;
   let connectMode=false,connectSource=null;
   let selectedBox=null,selectedConn=null;
+  let layoutDir='down'; // 'down' = top-to-bottom, 'right' = left-to-right
   const CACHE_KEY='orgchart_autosave';
   const saveStatus=document.getElementById('saveStatus');
   let saveTimer=null;
 
   function saveToCache(){
     try{
-      const data={boxes:boxes.map(b=>({id:b.id,x:b.x,y:b.y,text:b.titleEl.innerText,isHeader:b.isHeader,chips:b.chips,fixedW:b.fixedW,fixedH:b.fixedH,headerText:b.headerText||''})),conns,panX,panY,scale};
+      const data={boxes:boxes.map(b=>({id:b.id,x:b.x,y:b.y,text:b.titleEl.innerText,isHeader:b.isHeader,chips:b.chips,fixedW:b.fixedW,fixedH:b.fixedH,headerText:b.headerText||'',image:b.image||null})),conns,panX,panY,scale};
       localStorage.setItem(CACHE_KEY,JSON.stringify(data));
       saveStatus.textContent='✓ บันทึกอัตโนมัติแล้ว';saveStatus.style.opacity=1;
       clearTimeout(saveTimer);saveTimer=setTimeout(()=>{saveStatus.style.opacity=0;},2000);
@@ -406,7 +414,7 @@
       const data=JSON.parse(raw);
       boxes.forEach(b=>b.el.remove());boxes=[];conns=[];
       const idMap={};
-      data.boxes.forEach(bd=>{const nb=addBox(bd.x,bd.y,bd.text,bd.isHeader,bd.chips||[],bd.fixedW||null,bd.fixedH||null,bd.headerText||'');idMap[bd.id]=nb.id;});
+      data.boxes.forEach(bd=>{const nb=addBox(bd.x,bd.y,bd.text,bd.isHeader,bd.chips||[],bd.fixedW||null,bd.fixedH||null,bd.headerText||'',bd.image||null);idMap[bd.id]=nb.id;});
       conns=data.conns.map(c=>({from:idMap[c.from],to:idMap[c.to],fromSide:c.fromSide||'bottom',toSide:c.toSide||'top'}));
       if(data.scale) scale=data.scale;
       if(data.panX!==undefined) panX=data.panX;
@@ -445,12 +453,12 @@
     return new TextDecoder().decode(out);
   }
   function getCurrentSaveData(){
-    return {boxes:boxes.map(b=>({id:b.id,x:b.x,y:b.y,text:b.titleEl.innerText,isHeader:b.isHeader,chips:b.chips,fixedW:b.fixedW,fixedH:b.fixedH,headerText:b.headerText||''})),conns,panX,panY,scale};
+    return {boxes:boxes.map(b=>({id:b.id,x:b.x,y:b.y,text:b.titleEl.innerText,isHeader:b.isHeader,chips:b.chips,fixedW:b.fixedW,fixedH:b.fixedH,headerText:b.headerText||'',image:b.image||null})),conns,panX,panY,scale};
   }
   function loadSaveData(data){
     boxes.forEach(b=>b.el.remove());boxes=[];conns=[];
     const idMap={};
-    data.boxes.forEach(bd=>{const nb=addBox(bd.x,bd.y,bd.text,bd.isHeader,bd.chips||[],bd.fixedW||null,bd.fixedH||null,bd.headerText||'');idMap[bd.id]=nb.id;});
+    data.boxes.forEach(bd=>{const nb=addBox(bd.x,bd.y,bd.text,bd.isHeader,bd.chips||[],bd.fixedW||null,bd.fixedH||null,bd.headerText||'',bd.image||null);idMap[bd.id]=nb.id;});
     conns=(data.conns||[]).map(c=>({from:idMap[c.from],to:idMap[c.to],fromSide:c.fromSide||'bottom',toSide:c.toSide||'top'}));
     if(data.scale) scale=data.scale;
     if(data.panX!==undefined) panX=data.panX;
@@ -743,7 +751,7 @@
     addBox((rect.width/2-panX)/scale-60,(50-panY)/scale-20,'หัวข้อใหม่',true);
   };
 
-  function addBox(x,y,text,isHeader,chips=[],initFixedW=null,initFixedH=null,headerText=''){
+  function addBox(x,y,text,isHeader,chips=[],initFixedW=null,initFixedH=null,headerText='',initImage=null){
     const el=document.createElement('div');
     el.className='box'+(isHeader?' header':'');
     el.style.left=x+'px';el.style.top=y+'px';
@@ -768,12 +776,68 @@
     hintEl.className='comma-hint';hintEl.textContent='Shift+Enter = เพิ่มไอเท็ม, Ctrl+Shift+Enter = สร้างหัวข้อด้านบนซ้าย';el.appendChild(hintEl);
     const childrenEl=document.createElement('div');
     childrenEl.className='box-children';el.appendChild(childrenEl);
+    // ===== IMAGE AREA =====
+    const imgWrap=document.createElement('div');
+    imgWrap.className='box-img-wrap';imgWrap.style.display='none';el.appendChild(imgWrap);
+    const imgEl=document.createElement('img');imgEl.draggable=false;imgWrap.appendChild(imgEl);
+    const imgDel=document.createElement('button');imgDel.className='box-img-del';imgDel.textContent='✕';imgDel.title='ลบรูป';imgWrap.appendChild(imgDel);
+    const imgUploadBtn=document.createElement('div');
+    imgUploadBtn.className='box-img-upload';
+    imgUploadBtn.innerHTML='<span class="img-icon">🖼️</span><span>เพิ่มรูปภาพ</span>';
+    el.appendChild(imgUploadBtn);
+    const imgFileInput=document.createElement('input');
+    imgFileInput.type='file';imgFileInput.accept='image/*';imgFileInput.style.display='none';
+    el.appendChild(imgFileInput);
     const rE=document.createElement('div');rE.className='resize-handle resize-e';el.appendChild(rE);
     const rS=document.createElement('div');rS.className='resize-handle resize-s';el.appendChild(rS);
     const rSE=document.createElement('div');rSE.className='resize-handle resize-se';el.appendChild(rSE);
     world.appendChild(el);
-    const box={id:'b'+(idCounter++),el,x,y,isHeader,chips:[],titleEl,childrenEl,headerEl,fixedW:null,fixedH:null,headerText:headerText||''};
+    const box={id:'b'+(idCounter++),el,x,y,isHeader,chips:[],titleEl,childrenEl,headerEl,fixedW:null,fixedH:null,headerText:headerText||'',image:null};
     boxes.push(box);
+
+    function setBoxImage(dataUrl){
+      box.image=dataUrl;
+      imgEl.src=dataUrl;
+      imgWrap.style.display='block';
+      imgUploadBtn.querySelector('span:last-child').textContent='เปลี่ยนรูป';
+      redrawLines();schedSave();
+    }
+    function clearBoxImage(){
+      box.image=null;
+      imgEl.src='';
+      imgWrap.style.display='none';
+      imgUploadBtn.querySelector('span:last-child').textContent='เพิ่มรูปภาพ';
+      redrawLines();schedSave();
+    }
+    imgDel.addEventListener('mousedown',e=>e.stopPropagation());
+    imgDel.addEventListener('click',e=>{e.stopPropagation();clearBoxImage();});
+    imgUploadBtn.addEventListener('mousedown',e=>e.stopPropagation());
+    imgUploadBtn.addEventListener('click',e=>{e.stopPropagation();imgFileInput.click();});
+    imgFileInput.addEventListener('change',e=>{
+      const file=e.target.files[0];if(!file) return;
+      const reader=new FileReader();
+      reader.onload=ev=>setBoxImage(ev.target.result);
+      reader.readAsDataURL(file);
+      imgFileInput.value='';
+    });
+    // Drag & drop image onto box
+    el.addEventListener('dragover',e=>{
+      if(e.dataTransfer.types.includes('Files')){e.preventDefault();el.classList.add('drop-target');}
+    });
+    el.addEventListener('dragleave',e=>{
+      if(!el.contains(e.relatedTarget)) el.classList.remove('drop-target');
+    });
+    el.addEventListener('drop',e=>{
+      el.classList.remove('drop-target');
+      const file=Array.from(e.dataTransfer.files).find(f=>f.type.startsWith('image/'));
+      if(!file) return;
+      e.preventDefault();e.stopPropagation();
+      const reader=new FileReader();
+      reader.onload=ev=>setBoxImage(ev.target.result);
+      reader.readAsDataURL(file);
+    });
+    box._setImage=setBoxImage;
+    box._clearImage=clearBoxImage;
     if(box.headerText){
       box.headerEl.textContent=box.headerText;
       box.headerEl.style.display='block';
@@ -831,6 +895,8 @@
     if(initFixedH!==null) box.fixedH=initFixedH;
     if(box.fixedW!==null||box.fixedH!==null) applyBoxSize();
     chips.forEach(c=>addChip(box,c.text,c.id));
+    if(initImage) setBoxImage(initImage);
+    if(initFixedW!==null||initFixedH!==null||chips.length||headerText) {} // already applied above
 
     box.setHeaderText=function(text){
       box.headerText=text.trim();
@@ -1068,6 +1134,191 @@
       });
       redrawLines();
     }
+    // กด 3 → Auto-layout: จัดทุกกล่องเป็น tree สวยงามอัตโนมัติ (toggle down/right)
+    if(!editing&&(e.key==='3'||e.code==='Digit3')){
+      e.preventDefault();
+      if(boxes.length===0) return;
+      layoutDir = (layoutDir === 'down') ? 'right' : 'down';
+      const H_GAP=50;   // ช่องว่างแนวนอนระหว่าง subtree
+      const V_GAP=80;   // ช่องว่างแนวตั้งระหว่าง layer
+
+      // --- หา connected components (undirected) ---
+      const adjUnd=new Map();
+      boxes.forEach(b=>adjUnd.set(b.id,[]));
+      conns.forEach(c=>{
+        if(adjUnd.has(c.from)) adjUnd.get(c.from).push(c.to);
+        if(adjUnd.has(c.to))   adjUnd.get(c.to).push(c.from);
+      });
+      const compOf=new Map();
+      let compCount=0;
+      boxes.forEach(b=>{
+        if(compOf.has(b.id)) return;
+        const q=[b.id]; compOf.set(b.id,compCount);
+        let qi2=0;
+        while(qi2<q.length){
+          const cur=q[qi2++];
+          (adjUnd.get(cur)||[]).forEach(nb=>{
+            if(!compOf.has(nb)){compOf.set(nb,compCount);q.push(nb);}
+          });
+        }
+        compCount++;
+      });
+
+      const inDeg=new Map();
+      boxes.forEach(b=>inDeg.set(b.id,0));
+      conns.forEach(c=>inDeg.set(c.to,(inDeg.get(c.to)||0)+1));
+
+      const comps=[];
+      for(let i=0;i<compCount;i++) comps.push([]);
+      boxes.forEach(b=>comps[compOf.get(b.id)].push(b));
+
+      // depthOf และ parentIdOf สำหรับใช้ assign sides
+      const depthOf=new Map();
+      const parentIdOf=new Map(); // childId → parentId (ใน tree ที่ layout)
+
+      function layoutComp(compBoxes, offsetX){
+        // หา root: in-degree 0 ภายใน component
+        let root=compBoxes.find(b=>inDeg.get(b.id)===0);
+        if(!root){
+          // cycle → เลือกตัวที่ out-degree มากสุด
+          let best=compBoxes[0], bestOut=0;
+          compBoxes.forEach(b=>{
+            const out=conns.filter(c=>c.from===b.id&&compBoxes.some(cb=>cb.id===c.to)).length;
+            if(out>bestOut){bestOut=out;best=b;}
+          });
+          root=best;
+        }
+
+        // BFS directed สร้าง tree จริง (ไม่นับเส้นวนกลับ)
+        const children=new Map(); // id → [box]
+        compBoxes.forEach(b=>children.set(b.id,[]));
+        const vis=new Set([root.id]);
+        depthOf.set(root.id,0);
+        const q=[root]; let qi=0;
+        while(qi<q.length){
+          const cur=q[qi++];
+          conns.filter(c=>c.from===cur.id).forEach(c=>{
+            const child=boxes.find(b=>b.id===c.to);
+            if(!child||vis.has(child.id)) return;
+            vis.add(child.id);
+            depthOf.set(child.id,(depthOf.get(cur.id)||0)+1);
+            parentIdOf.set(child.id,cur.id);
+            children.get(cur.id).push(child);
+            q.push(child);
+          });
+        }
+        compBoxes.forEach(b=>{
+          if(!vis.has(b.id)){children.get(root.id).push(b);depthOf.set(b.id,1);}
+        });
+
+        // Flatten chain: ถ้า root มีลูกเดียวและลูกนั้นมีพี่น้อง (sibling ใน connection เดิม)
+        // ให้ดึง grandchildren ที่เป็น chain ขึ้นมาเป็นพี่น้องกัน
+        function flattenChain(parent){
+          const ch=children.get(parent.id)||[];
+          // ถ้ามีลูกเดียวและลูกนั้นไม่มีลูก → chain ตรง ให้ดึงขึ้น
+          if(ch.length===1){
+            const onlyChild=ch[0];
+            const grandCh=children.get(onlyChild.id)||[];
+            if(grandCh.length>0){
+              // ดึง grandchildren ขึ้นมาเป็น siblings ของ onlyChild
+              children.set(parent.id,[onlyChild,...grandCh]);
+              children.set(onlyChild.id,[]);
+              grandCh.forEach(gc=>{
+                depthOf.set(gc.id,(depthOf.get(parent.id)||0)+1);
+                parentIdOf.set(gc.id,parent.id);
+              });
+            }
+          }
+          (children.get(parent.id)||[]).forEach(c=>flattenChain(c));
+        }
+        flattenChain(root);
+
+        // คำนวณ subtree pixel-width (post-order)
+        // สำหรับ right layout: subW จริงๆ คือ subHeight
+        const subW=new Map();
+        function calcW(b){
+          const ch=children.get(b.id)||[];
+          if(layoutDir==='right'){
+            if(ch.length===0){subW.set(b.id,Math.max(b.el.offsetHeight,50));return;}
+            ch.forEach(c=>calcW(c));
+            const total=ch.reduce((s,c)=>s+subW.get(c.id),0)+(ch.length-1)*H_GAP;
+            subW.set(b.id,Math.max(b.el.offsetHeight,total));
+          } else {
+            if(ch.length===0){subW.set(b.id,Math.max(b.el.offsetWidth,120));return;}
+            ch.forEach(c=>calcW(c));
+            const total=ch.reduce((s,c)=>s+subW.get(c.id),0)+(ch.length-1)*H_GAP;
+            subW.set(b.id,Math.max(b.el.offsetWidth,total));
+          }
+        }
+        calcW(root);
+
+        // วาง X/Y (pre-order): กล่องอยู่กึ่งกลาง subtree ของตัวเอง
+        // ใช้ขนาดจริงจาก offsetWidth (ควร > 0 เพราะกล่องมีอยู่แล้ว)
+        function place(b,sx,depth){
+          const sw=subW.get(b.id);
+          if(layoutDir === 'right'){
+            // left-to-right: depth = X axis, sx = Y start
+            const bh=Math.max(b.el.offsetHeight,50);
+            const rowW=Math.max(...compBoxes.map(bb=>bb.el.offsetWidth||120));
+            b.y=offsetX+sx+sw/2-bh/2;
+            b.x=depth*(rowW+V_GAP)+40;
+          } else {
+            // top-to-bottom (default)
+            const bw=Math.max(b.el.offsetWidth,120);
+            const rowH=Math.max(...compBoxes.map(bb=>bb.el.offsetHeight||50));
+            b.x=offsetX+sx+sw/2-bw/2;
+            b.y=depth*(rowH+V_GAP)+40;
+          }
+          b.el.style.left=b.x+'px';
+          b.el.style.top=b.y+'px';
+          const ch=children.get(b.id)||[];
+          let cx=sx;
+          ch.forEach(child=>{
+            place(child,cx,depth+1);
+            cx+=subW.get(child.id)+H_GAP;
+          });
+        }
+        place(root,0,0);
+        return subW.get(root.id);
+      }
+
+      let ox=40;
+      comps.forEach(compBoxes=>{
+        const w=layoutComp(compBoxes,ox);
+        if(layoutDir==='right') ox+=w+H_GAP*3;
+        else ox+=w+H_GAP*3;
+      });
+
+      // assign fromSide/toSide: parent→child = bottom→top (down) หรือ right→left (right)
+      conns.forEach(c=>{
+        const fb=boxes.find(b=>b.id===c.from),tb=boxes.find(b=>b.id===c.to);
+        if(!fb||!tb) return;
+        // ถ้า fb คือ parent ของ tb ใน tree
+        if(parentIdOf.get(tb.id)===fb.id){
+          if(layoutDir==='right'){c.fromSide='right'; c.toSide='left';}
+          else{c.fromSide='bottom'; c.toSide='top';}
+        } else if(parentIdOf.get(fb.id)===tb.id){
+          if(layoutDir==='right'){c.fromSide='left'; c.toSide='right';}
+          else{c.fromSide='top'; c.toSide='bottom';}
+        } else {
+          // เส้นข้าม level หรือ sibling
+          const fd=depthOf.get(fb.id)??0, td=depthOf.get(tb.id)??0;
+          if(layoutDir==='right'){
+            if(td>fd){c.fromSide='right';c.toSide='left';}
+            else if(fd>td){c.fromSide='left';c.toSide='right';}
+            else if(fb.y<tb.y){c.fromSide='bottom';c.toSide='top';}
+            else{c.fromSide='top';c.toSide='bottom';}
+          } else {
+            if(td>fd){c.fromSide='bottom';c.toSide='top';}
+            else if(fd>td){c.fromSide='top';c.toSide='bottom';}
+            else if(fb.x<tb.x){c.fromSide='right';c.toSide='left';}
+            else{c.fromSide='left';c.toSide='right';}
+          }
+        }
+      });
+
+      redrawLines();schedSave();
+    }
     if(!editing&&(e.key==='2'||e.code==='Digit2')&&selectedBoxes.size>1){
       e.preventDefault();
       const list=Array.from(selectedBoxes);
@@ -1087,11 +1338,11 @@
     }
     if(!editing&&(e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='c'&&selectedBox){
       e.preventDefault();
-      clipboardBox={text:selectedBox.titleEl.innerText,isHeader:selectedBox.isHeader,chips:selectedBox.chips.map(c=>({text:c.text})),fixedW:selectedBox.fixedW,fixedH:selectedBox.fixedH,x:selectedBox.x,y:selectedBox.y};
+      clipboardBox={text:selectedBox.titleEl.innerText,isHeader:selectedBox.isHeader,chips:selectedBox.chips.map(c=>({text:c.text})),fixedW:selectedBox.fixedW,fixedH:selectedBox.fixedH,x:selectedBox.x,y:selectedBox.y,image:selectedBox.image||null};
     }
     if(!editing&&(e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='v'&&clipboardBox){
       e.preventDefault();
-      const nb=addBox(clipboardBox.x+30,clipboardBox.y+30,clipboardBox.text,clipboardBox.isHeader,clipboardBox.chips,clipboardBox.fixedW,clipboardBox.fixedH);
+      const nb=addBox(clipboardBox.x+30,clipboardBox.y+30,clipboardBox.text,clipboardBox.isHeader,clipboardBox.chips,clipboardBox.fixedW,clipboardBox.fixedH,'',clipboardBox.image||null);
       clipboardBox.x+=30;clipboardBox.y+=30;
       selectBox(nb);
     }
@@ -1139,7 +1390,7 @@
     svg.appendChild(dot);
   }
   document.getElementById('btnExport').onclick=()=>{
-    const data={boxes:boxes.map(b=>({id:b.id,x:b.x,y:b.y,text:b.titleEl.innerText,isHeader:b.isHeader,chips:b.chips,fixedW:b.fixedW,fixedH:b.fixedH,headerText:b.headerText||''})),conns};
+    const data={boxes:boxes.map(b=>({id:b.id,x:b.x,y:b.y,text:b.titleEl.innerText,isHeader:b.isHeader,chips:b.chips,fixedW:b.fixedW,fixedH:b.fixedH,headerText:b.headerText||'',image:b.image||null})),conns};
     const a=document.createElement('a');
     a.href=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}));
     a.download='chart.json';a.click();
@@ -1153,7 +1404,7 @@
         const data=JSON.parse(reader.result);
         boxes.forEach(b=>b.el.remove());boxes=[];conns=[];
         const idMap={};
-        data.boxes.forEach(bd=>{const nb=addBox(bd.x,bd.y,bd.text,bd.isHeader,bd.chips||[],bd.fixedW||null,bd.fixedH||null,bd.headerText||'');idMap[bd.id]=nb.id;});
+        data.boxes.forEach(bd=>{const nb=addBox(bd.x,bd.y,bd.text,bd.isHeader,bd.chips||[],bd.fixedW||null,bd.fixedH||null,bd.headerText||'',bd.image||null);idMap[bd.id]=nb.id;});
         conns=data.conns.map(c=>({from:idMap[c.from],to:idMap[c.to],fromSide:c.fromSide||'bottom',toSide:c.toSide||'top'}));
         redrawLines();
       }catch(err){alert('ไฟล์ไม่ถูกต้อง: '+err.message);}
