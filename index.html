@@ -37,6 +37,7 @@
   #canvasWrap.panning{cursor:grabbing;}
   #world{position:absolute;top:0;left:0;transform-origin:0 0;width:1px;height:1px;}
   svg#lines{position:absolute;top:0;left:0;overflow:visible;}
+  canvas#connCanvas{position:absolute;top:0;left:0;overflow:visible;pointer-events:none;}
   .connLine{cursor:pointer;pointer-events:stroke;}
   .connLine:hover{stroke:#ff5c5c !important;}
   .connLine.connSelected{stroke:#ff5c5c !important;stroke-width:3.5 !important;}
@@ -227,8 +228,8 @@
   #btnSupport:hover{filter:brightness(1.08);}
   #supOverlay{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:520;display:none;align-items:center;justify-content:center;}
   #supOverlay.open{display:flex;}
-  #supDialog{position:relative;background:var(--panel);border:1px solid #3a4358;border-radius:16px;box-shadow:0 18px 52px rgba(0,0,0,.6);padding:22px 24px 20px;width:380px;max-width:92vw;text-align:center;}
-  #supClose{position:absolute;top:12px;right:12px;width:26px;height:26px;border:none;border-radius:7px;background:rgba(255,255,255,.08);color:#aab4c8;font-size:14px;cursor:pointer;z-index:2;}
+  #supDialog{position:relative;background:var(--panel);border:1px solid #3a4358;border-radius:16px;box-shadow:0 18px 52px rgba(0,0,0,.6);padding:22px 24px 20px;width:380px;max-width:92vw;text-align:center;box-sizing:border-box;max-height:calc(100vh - 80px);overflow:auto;}
+  #supClose{position:absolute;top:12px;right:12px;width:36px;height:36px;border:none;border-radius:8px;background:rgba(255,255,255,.08);color:#aab4c8;font-size:16px;cursor:pointer;z-index:9999;}
   #supClose:hover{background:rgba(255,255,255,.18);color:#fff;}
   #supMascot{width:150px;height:auto;display:block;margin:0 auto;image-rendering:auto;transition:opacity .15s,transform .25s;}
   #supMascot.pop{animation:supPop .4s ease;}
@@ -522,7 +523,7 @@
 <div id="mobileConnectHint">🔗 แตะ anchor (จุดสีฟ้า) เพื่อเชื่อมต่อ — แตะ ✕ เพื่อยกเลิก</div>
 
 <div id="canvasWrap">
-  <div id="world"><svg id="lines"></svg></div>
+  <div id="world"><canvas id="connCanvas"></canvas><svg id="lines"></svg></div>
   <div id="selectRect"></div>
 </div>
 <div id="hint">
@@ -2926,9 +2927,41 @@ var qrcode = function() {
   const world=document.getElementById('world');
   const wrap=document.getElementById('canvasWrap');
   const svg=document.getElementById('lines');
+  const connCanvas = document.getElementById('connCanvas');
+  const connCtx = connCanvas.getContext?connCanvas.getContext('2d'):null;
+  let useCanvasConnections = false; // prototype: draw connections on canvas (faster at scale)
+  // TOGGLE: ลองพิมพ์ window.toggleCanvasMode() ในคอนโซล เพื่อสลับ SVG <-> Canvas
+  // dirty coalescing for canvas draws
+  let pendingDirtyConns = new Set();
+  let dirtyDrawPending = false;
+  function markDirtyConns(arr){
+    if(!useCanvasConnections) return;
+    if(!arr) { drawConnsCanvas(); return; }
+    const list = Array.isArray(arr)?arr:[arr];
+    list.forEach(c=>{ if(c && c.id) pendingDirtyConns.add(c.id); });
+    if(dirtyDrawPending) return;
+    dirtyDrawPending = true;
+    requestAnimationFrame(()=>{
+      dirtyDrawPending = false;
+      const ids = Array.from(pendingDirtyConns); pendingDirtyConns.clear();
+      const connsToDraw = ids.map(id=>conns.find(c=>c.id===id)).filter(Boolean);
+      if(connsToDraw.length) drawConnsCanvas(connsToDraw);
+    });
+  }
+  // TOGGLE FUNCTION: ลองพิมพ์ window.toggleCanvasMode() ในคอนโซล
+  window.toggleCanvasMode = () => { useCanvasConnections = !useCanvasConnections; redrawLines.now(); console.log('Canvas mode:', useCanvasConnections); };
   let scale=1,panX=0,panY=0;
   let boxes=[],conns=[],idCounter=1;
+  // redraw throttle state: schedule actual redraws via rAF and ignore tiny moves
+  let redrawPending=false;
+  let lastRedrawMousePos={x:0,y:0};
+  const REDRAW_THRESHOLD=2; // pixels
   let floatChips=[],floatChipIdCounter=1;
+  // connection element cache and id counter for incremental updates
+  let connIdCounter=1;
+  const connEls = Object.create(null); // map conn.id -> {hit,path,dot}
+  // perf stats
+  window.__perfStats = window.__perfStats || {redraws:0,totalTime:0,last:0};
   let connectMode=false,connectSource=null;
   let selectedBox=null,selectedConn=null;
   let layoutDir='down'; // 'down' = top-to-bottom, 'right' = left-to-right
@@ -2954,11 +2987,11 @@ var qrcode = function() {
       boxes.forEach(b=>b.el.remove());boxes=[];conns=[];clearFloatChips();
       const idMap={};
       data.boxes.forEach(bd=>{const nb=addBox(bd.x,bd.y,bd.text,bd.isHeader,bd.chips||[],bd.fixedW||null,bd.fixedH||null,bd.headerText||'',bd.image||null);idMap[bd.id]=nb.id;if(bd.collapsed) setBoxCollapsed(nb,true);applyBoxColors(nb,bd.color||null,bd.borderColor||null,bd.textColor||null);});
-      conns=(data.conns||[]).map(c=>({from:idMap[c.from],to:idMap[c.to],fromSide:c.fromSide||'bottom',toSide:c.toSide||'top',color:c.color||null})).filter(c=>c.from&&c.to);(data.floatChips||[]).forEach(fc=>addFloatChip(fc.x,fc.y,fc.text));
+      conns=(data.conns||[]).map(c=>({id:c.id||('c'+(connIdCounter++)),from:idMap[c.from],to:idMap[c.to],fromSide:c.fromSide||'bottom',toSide:c.toSide||'top',color:c.color||null})).filter(c=>c.from&&c.to);(data.floatChips||[]).forEach(fc=>addFloatChip(fc.x,fc.y,fc.text));
       if(data.scale) scale=data.scale;
       if(data.panX!==undefined) panX=data.panX;
       if(data.panY!==undefined) panY=data.panY;
-      redrawLines();applyTransform();
+      redrawLines.now();applyTransform();
       return true;
     }catch(e){return false;}
   }
@@ -2999,11 +3032,11 @@ var qrcode = function() {
     boxes.forEach(b=>b.el.remove());boxes=[];conns=[];clearFloatChips();
     const idMap={};
     data.boxes.forEach(bd=>{const nb=addBox(bd.x,bd.y,bd.text,bd.isHeader,bd.chips||[],bd.fixedW||null,bd.fixedH||null,bd.headerText||'',bd.image||null);idMap[bd.id]=nb.id;if(bd.collapsed) setBoxCollapsed(nb,true);applyBoxColors(nb,bd.color||null,bd.borderColor||null,bd.textColor||null);});
-    conns=(data.conns||[]).map(c=>({from:idMap[c.from],to:idMap[c.to],fromSide:c.fromSide||'bottom',toSide:c.toSide||'top',color:c.color||null})).filter(c=>c.from&&c.to);(data.floatChips||[]).forEach(fc=>addFloatChip(fc.x,fc.y,fc.text));
+    conns=(data.conns||[]).map(c=>({id:c.id||('c'+(connIdCounter++)),from:idMap[c.from],to:idMap[c.to],fromSide:c.fromSide||'bottom',toSide:c.toSide||'top',color:c.color||null})).filter(c=>c.from&&c.to);(data.floatChips||[]).forEach(fc=>addFloatChip(fc.x,fc.y,fc.text));
     if(data.scale) scale=data.scale;
     if(data.panX!==undefined) panX=data.panX;
     if(data.panY!==undefined) panY=data.panY;
-    redrawLines();applyTransform();
+    redrawLines.now();applyTransform();
   }
 
   // ===== UNDO / REDO =====
@@ -3179,7 +3212,7 @@ var qrcode = function() {
         pushHistory();
         editingBox.titleEl.innerText='';
       }
-      redrawLines();
+      redrawLines.now();
     }
     editPanel.classList.remove('open');editOverlay.classList.remove('open');
     editingBox=null;
@@ -3194,12 +3227,12 @@ var qrcode = function() {
       if(!textValue) return;
       if(e.ctrlKey||e.metaKey){
         if(editingBox && !editingBox.isHeader){
-          pushHistory();
-          editingBox.setHeaderText(textValue);
-          redrawLines();
-          epTextarea.value='';
-          return;
-        }
+            pushHistory();
+            editingBox.setHeaderText(textValue);
+            updateConnsForBox(editingBox);
+            epTextarea.value='';
+            return;
+          }
       } else {
         if(editingBox){
           pushHistory();
@@ -3289,7 +3322,8 @@ var qrcode = function() {
           child.el.style.top=child.y+'px';
         }
       });
-      redrawLines();
+      // update only connections related to the dragged box
+      updateConnsForBox(dragBox);
       if(cpTarget&&cpTarget.type==='box'&&cpTarget.box===dragBox) positionColorPop();
     }
     if(groupDrag){
@@ -3310,7 +3344,14 @@ var qrcode = function() {
           }
         });
       });
-      redrawLines();
+      // batch update connections for all moved boxes (collect unique conns)
+      if(useCanvasConnections){
+        const movedIds=new Set(groupDrag.boxes.map(b=>b.id));
+        const dirtyConns=conns.filter(c=>movedIds.has(c.from)||movedIds.has(c.to));
+        drawConnsCanvas(dirtyConns);
+      } else {
+        groupDrag.boxes.forEach(b=>updateConnsForBox(b));
+      }
     }
     if(chipDrag) moveChipGhost(e);
     if(floatDrag) moveFloatDrag(e);
@@ -3383,7 +3424,7 @@ var qrcode = function() {
     box.el.style.color=box.textColor||'';
     box.titleEl.style.color=box.textColor||'';
     // keep header subheader / placeholder legible too
-    redrawLines();
+    updateConnsForBox(box);
   }
 
   function setBoxCollapsed(box,val){
@@ -3392,7 +3433,7 @@ var qrcode = function() {
     box.el.querySelector('.box-collapse').textContent=val?'+':'–';
     const n=box.chips.length;
     box.collapseCount.textContent=n?('▦ '+n+' ไอเท็ม'+(box.image?' • 🖼️':'')):(box.image?'🖼️ มีรูป':'(ว่าง)');
-    redrawLines();
+    updateConnsForBox(box);
   }
 
   function addBox(x,y,text,isHeader,chips=[],initFixedW=null,initFixedH=null,headerText='',initImage=null){
@@ -3459,7 +3500,7 @@ var qrcode = function() {
       imgEl.src=dataUrl;
       imgWrap.style.display='block';
       imgUploadBtn.querySelector('span:last-child').textContent='เปลี่ยนรูป';
-      redrawLines();schedSave();
+      updateConnsForBox(box);schedSave();
     }
     function clearBoxImage(){
       pushHistory();
@@ -3467,7 +3508,7 @@ var qrcode = function() {
       imgEl.src='';
       imgWrap.style.display='none';
       imgUploadBtn.querySelector('span:last-child').textContent='เพิ่มรูปภาพ';
-      redrawLines();schedSave();
+      updateConnsForBox(box);schedSave();
     }
     imgDel.addEventListener('mousedown',e=>e.stopPropagation());
     imgDel.addEventListener('click',e=>{e.stopPropagation();clearBoxImage();});
@@ -3509,7 +3550,7 @@ var qrcode = function() {
       el.classList.toggle('fixed-w',box.fixedW!==null);
       el.style.height=box.fixedH!==null?box.fixedH+'px':'';
       el.classList.toggle('fixed-h',box.fixedH!==null);
-      redrawLines();
+      updateConnsForBox(box);
     }
     function startResize(e,doW,doH){
       e.stopPropagation();e.preventDefault();selectBox(box);
@@ -3644,7 +3685,7 @@ var qrcode = function() {
       if(willShow) chip.classList.add('show-del');
     });
     attachChipTouchDrag(chip,del);
-    box.childrenEl.appendChild(chip);if(box.collapsed) setBoxCollapsed(box,true);redrawLines();return chip;
+    box.childrenEl.appendChild(chip);if(box.collapsed) setBoxCollapsed(box,true);updateConnsForBox(box);return chip;
   }
   // ===== TOUCH DRAG FOR CHIPS (ลากไอเท็มข้ามกล่อง บนมือถือ) =====
   // แตะเฉยๆ (ไม่ขยับ) = tap เปิด/ปิดปุ่มลบ, แตะค้างแล้วลาก = ย้ายไอเท็ม
@@ -3685,7 +3726,7 @@ var qrcode = function() {
   function removeChip(box,chipId){
     box.chips=box.chips.filter(c=>c.id!==chipId);
     const el=box.childrenEl.querySelector(`[data-chip-id="${chipId}"]`);
-    if(el) el.remove();if(box.collapsed) setBoxCollapsed(box,true);redrawLines();
+    if(el) el.remove();if(box.collapsed) setBoxCollapsed(box,true);updateConnsForBox(box);
   }
   function startChipDrag(e,box,chipData,chipEl){
     chipDrag={box,chipData,chipEl};chipEl.classList.add('dragging-chip');
@@ -3926,8 +3967,8 @@ var qrcode = function() {
   }
   function selectBox(box){clearConnSelection();if(selectedBox) selectedBox.el.classList.remove('selected');selectedBox=box;box.el.classList.add('selected');showColorPopForBox(box);}
   function clearSelection(){if(selectedBox) selectedBox.el.classList.remove('selected');selectedBox=null;hideColorPop();}
-  function selectConn(c){clearSelection();selectedConn=c;redrawLines();showColorPopForConn(c);}
-  function clearConnSelection(){selectedConn=null;redrawLines();hideColorPop();}
+  function selectConn(c){clearSelection();selectedConn=c;redrawLines.now();showColorPopForConn(c);}
+  function clearConnSelection(){selectedConn=null;redrawLines.now();hideColorPop();}
 
   // ===== COLOR POPOVER =====
   const colorPop=document.getElementById('colorPop');
@@ -3999,7 +4040,7 @@ var qrcode = function() {
     colorPopBody.appendChild(title);
     colorPopBody.appendChild(makeSwatchRow('สีเส้น',LINE_PALETTE,conn.color,true,(col,live)=>{
       if(live!==false) pushHistory();
-      conn.color=col||null;redrawLines();schedSave();
+      conn.color=col||null; if(useCanvasConnections) markDirtyConns([conn]); else updateConn(conn); schedSave();
       if(typeof live==='undefined') refreshColorPop();
     }));
     positionColorPop();
@@ -4069,13 +4110,21 @@ var qrcode = function() {
     if(connectSource&&connectSource.box!==targetBox){
       pushHistory();
       const srcColor=connectSource.box.borderColor||null;
-      conns.push({from:connectSource.box.id,to:targetBox.id,fromSide:connectSource.side,toSide:side||'top',color:srcColor});redrawLines();
+      conns.push({id:'c'+(connIdCounter++),from:connectSource.box.id,to:targetBox.id,fromSide:connectSource.side,toSide:side||'top',color:srcColor});redrawLines.now();
     }
     cancelConnect();
   }
   function cancelConnect(){if(connectSource) connectSource.box.el.classList.remove('connect-source');connectSource=null;}
-  function deleteBox(box){conns=conns.filter(c=>c.from!==box.id&&c.to!==box.id);box.el.remove();boxes=boxes.filter(b=>b!==box);selectedBox=null;redrawLines();}
-  function deleteConn(c){conns=conns.filter(x=>x!==c);selectedConn=null;redrawLines();}
+  function deleteBox(box){
+    // remove related connections and their svg elements
+    conns.filter(c=>c.from===box.id||c.to===box.id).forEach(c=>{if(c.id&&connEls[c.id]){const e=connEls[c.id];e.hit.remove();e.path.remove();e.dot.remove();delete connEls[c.id];}});
+    conns=conns.filter(c=>c.from!==box.id&&c.to!==box.id);
+    box.el.remove();boxes=boxes.filter(b=>b!==box);selectedBox=null;redrawLines.now();
+  }
+  function deleteConn(c){
+    if(c.id&&connEls[c.id]){const e=connEls[c.id];e.hit.remove();e.path.remove();e.dot.remove();delete connEls[c.id];}
+    conns=conns.filter(x=>x!==c);selectedConn=null;redrawLines.now();
+  }
   document.getElementById('btnDelete').onclick=()=>{
     if(selectedBox||selectedConn||selectedBoxes.size>0){
       pushHistory();
@@ -4125,7 +4174,11 @@ var qrcode = function() {
           }
         });
       });
-      redrawLines();
+      if(useCanvasConnections){
+        const ids=new Set(list.map(b=>b.id));
+        const dirty=conns.filter(c=>ids.has(c.from)||ids.has(c.to));
+        markDirtyConns(dirty);
+      } else list.forEach(b=>updateConnsForBox(b));
     }
     // กด 3 → Auto-layout: จัดกล่องที่เลือกไว้ (ถ้าไม่มีที่เลือก = จัดทั้งหมด) toggle down/right
     if(!editing&&(e.key==='3'||e.code==='Digit3')){
@@ -4133,200 +4186,142 @@ var qrcode = function() {
       if(boxes.length===0) return;
       pushHistory();
       layoutDir = (layoutDir === 'down') ? 'right' : 'down';
-      const H_GAP=50;
-      const V_GAP=80;
+      const H_GAP = 60;
+      const V_GAP = 90;
 
-      // กล่องที่จะ layout: ถ้ามี multi-select ใช้เฉพาะนั้น, ถ้ามี single select ใช้ตัวนั้น, ถ้าไม่มีใช้ทั้งหมด
-      const targetBoxes = selectedBoxes.size>1 ? Array.from(selectedBoxes)
-                        : selectedBox ? [selectedBox]
-                        : boxes.slice();
+      const targetBoxes = selectedBoxes.size>1 ? Array.from(selectedBoxes) : selectedBox ? [selectedBox] : boxes.slice();
       if(targetBoxes.length===0) return;
 
-      // หา anchor point (top-left ของ bounding box กล่องที่เลือก) เพื่อ layout ณ ตำแหน่งเดิม
       const anchorX = Math.min(...targetBoxes.map(b=>b.x));
       const anchorY = Math.min(...targetBoxes.map(b=>b.y));
-
-      // เฉพาะ conns ระหว่างกล่องใน targetBoxes เท่านั้น
       const targetIds = new Set(targetBoxes.map(b=>b.id));
       const targetConns = conns.filter(c=>targetIds.has(c.from)&&targetIds.has(c.to));
 
-      // --- หา connected components (undirected) ภายใน targetBoxes ---
-      const adjUnd=new Map();
-      targetBoxes.forEach(b=>adjUnd.set(b.id,[]));
-      targetConns.forEach(c=>{
-        if(adjUnd.has(c.from)) adjUnd.get(c.from).push(c.to);
-        if(adjUnd.has(c.to))   adjUnd.get(c.to).push(c.from);
-      });
-      const compOf=new Map();
-      let compCount=0;
-      targetBoxes.forEach(b=>{
-        if(compOf.has(b.id)) return;
-        const q=[b.id]; compOf.set(b.id,compCount);
-        let qi2=0;
-        while(qi2<q.length){
-          const cur=q[qi2++];
-          (adjUnd.get(cur)||[]).forEach(nb=>{
-            if(!compOf.has(nb)){compOf.set(nb,compCount);q.push(nb);}
-          });
+      // 1. บังคับโครงสร้างให้เป็น Strict Tree เพื่อป้องกันการทับซ้อนและลูป
+      const children = new Map();
+      const inDeg = new Map();
+      const hasParent = new Set(); 
+      
+      targetBoxes.forEach(b => { children.set(b.id, []); inDeg.set(b.id, 0); });
+      
+      targetConns.forEach(c => {
+        if(children.has(c.from) && children.has(c.to)) {
+          if (!hasParent.has(c.to)) { // ยอมให้มีโหนดแม่ได้แค่ตัวเดียวในการคำนวณ Layout
+            children.get(c.from).push(targetBoxes.find(b => b.id === c.to));
+            inDeg.set(c.to, (inDeg.get(c.to) || 0) + 1);
+            hasParent.add(c.to);
+          }
         }
-        compCount++;
       });
 
-      const inDeg=new Map();
-      targetBoxes.forEach(b=>inDeg.set(b.id,0));
-      targetConns.forEach(c=>inDeg.set(c.to,(inDeg.get(c.to)||0)+1));
+      const roots = targetBoxes.filter(b => inDeg.get(b.id) === 0);
+      if(roots.length === 0 && targetBoxes.length > 0) roots.push(targetBoxes[0]);
 
-      const comps=[];
-      for(let i=0;i<compCount;i++) comps.push([]);
-      targetBoxes.forEach(b=>comps[compOf.get(b.id)].push(b));
+      // 2. หาความสูงสูงสุด (หรือความกว้างสูงสุด) ของแต่ละระดับชั้นแบบไดนามิก
+      const levelDim = new Map(); 
+      
+      function calcLevels(node, depth) {
+        const dim = layoutDir === 'right' ? (node.el.offsetWidth || 120) : (node.el.offsetHeight || 50);
+        levelDim.set(depth, Math.max(levelDim.get(depth) || 0, dim));
+        (children.get(node.id) || []).forEach(c => calcLevels(c, depth + 1));
+      }
+      roots.forEach(r => calcLevels(r, 0));
 
-      const depthOf=new Map();
-      const parentIdOf=new Map();
-
-      function layoutComp(compBoxes, offsetX){
-        let root=compBoxes.find(b=>inDeg.get(b.id)===0);
-        if(!root){
-          let best=compBoxes[0], bestOut=0;
-          compBoxes.forEach(b=>{
-            const out=targetConns.filter(c=>c.from===b.id&&compBoxes.some(cb=>cb.id===c.to)).length;
-            if(out>bestOut){bestOut=out;best=b;}
-          });
-          root=best;
+      const subW = new Map();
+      
+      // 3. คำนวณพื้นที่ (Subtree Dimension) แบบ Post-order
+      function calcSubtreeSize(node) {
+        const ch = children.get(node.id) || [];
+        const myW = layoutDir === 'right' ? (node.el.offsetHeight || 50) : (node.el.offsetWidth || 120);
+        
+        if (ch.length === 0) {
+          subW.set(node.id, myW);
+          return myW;
         }
 
-        const children=new Map();
-        compBoxes.forEach(b=>children.set(b.id,[]));
-        const vis=new Set([root.id]);
-        depthOf.set(root.id,0);
-        const q=[root]; let qi=0;
-        while(qi<q.length){
-          const cur=q[qi++];
-          targetConns.filter(c=>c.from===cur.id).forEach(c=>{
-            const child=targetBoxes.find(b=>b.id===c.to);
-            if(!child||vis.has(child.id)) return;
-            vis.add(child.id);
-            depthOf.set(child.id,(depthOf.get(cur.id)||0)+1);
-            parentIdOf.set(child.id,cur.id);
-            children.get(cur.id).push(child);
-            q.push(child);
-          });
-        }
-        compBoxes.forEach(b=>{
-          if(!vis.has(b.id)){children.get(root.id).push(b);depthOf.set(b.id,1);}
+        let totalChildrenW = 0;
+        ch.forEach((c, i) => {
+          totalChildrenW += calcSubtreeSize(c);
+          if (i < ch.length - 1) totalChildrenW += H_GAP;
         });
 
-        function flattenChain(parent){
-          const ch=children.get(parent.id)||[];
-          if(ch.length===1){
-            const onlyChild=ch[0];
-            const grandCh=children.get(onlyChild.id)||[];
-            if(grandCh.length>0){
-              children.set(parent.id,[onlyChild,...grandCh]);
-              children.set(onlyChild.id,[]);
-              grandCh.forEach(gc=>{
-                depthOf.set(gc.id,(depthOf.get(parent.id)||0)+1);
-                parentIdOf.set(gc.id,parent.id);
-              });
-            }
-          }
-          (children.get(parent.id)||[]).forEach(c=>flattenChain(c));
-        }
-        flattenChain(root);
-
-        const subW=new Map();
-        function calcW(b){
-          const ch=children.get(b.id)||[];
-          if(layoutDir==='right'){
-            if(ch.length===0){subW.set(b.id,Math.max(b.el.offsetHeight,50));return;}
-            ch.forEach(c=>calcW(c));
-            const total=ch.reduce((s,c)=>s+subW.get(c.id),0)+(ch.length-1)*H_GAP;
-            subW.set(b.id,Math.max(b.el.offsetHeight,total));
-          } else {
-            if(ch.length===0){subW.set(b.id,Math.max(b.el.offsetWidth,120));return;}
-            ch.forEach(c=>calcW(c));
-            const total=ch.reduce((s,c)=>s+subW.get(c.id),0)+(ch.length-1)*H_GAP;
-            subW.set(b.id,Math.max(b.el.offsetWidth,total));
-          }
-        }
-        calcW(root);
-
-        function place(b,sx,depth){
-          const sw=subW.get(b.id);
-          if(layoutDir==='right'){
-            const bh=Math.max(b.el.offsetHeight,50);
-            const rowW=Math.max(...compBoxes.map(bb=>bb.el.offsetWidth||120));
-            b.y=anchorY+offsetX+sx+sw/2-bh/2;
-            b.x=anchorX+depth*(rowW+V_GAP);
-          } else {
-            const bw=Math.max(b.el.offsetWidth,120);
-            const rowH=Math.max(...compBoxes.map(bb=>bb.el.offsetHeight||50));
-            b.x=anchorX+offsetX+sx+sw/2-bw/2;
-            b.y=anchorY+depth*(rowH+V_GAP);
-          }
-          b.el.style.left=b.x+'px';
-          b.el.style.top=b.y+'px';
-          const ch=children.get(b.id)||[];
-          let cx=sx;
-          ch.forEach(child=>{
-            place(child,cx,depth+1);
-            cx+=subW.get(child.id)+H_GAP;
-          });
-        }
-        place(root,0,0);
-        return subW.get(root.id);
+        const finalW = Math.max(myW, totalChildrenW);
+        subW.set(node.id, finalW);
+        return finalW;
       }
 
-      let ox=0;
-      comps.forEach(compBoxes=>{
-        const w=layoutComp(compBoxes,ox);
-        ox+=w+H_GAP*3;
-      });
-
-      // assign fromSide/toSide เฉพาะ conns ใน targetBoxes
-      targetConns.forEach(c=>{
-        const fb=targetBoxes.find(b=>b.id===c.from),tb=targetBoxes.find(b=>b.id===c.to);
-        if(!fb||!tb) return;
-        if(parentIdOf.get(tb.id)===fb.id){
-          if(layoutDir==='right'){c.fromSide='right'; c.toSide='left';}
-          else{c.fromSide='bottom'; c.toSide='top';}
-        } else if(parentIdOf.get(fb.id)===tb.id){
-          if(layoutDir==='right'){c.fromSide='left'; c.toSide='right';}
-          else{c.fromSide='top'; c.toSide='bottom';}
+      // 4. จัดวางตำแหน่ง (Placement) แบบ Pre-order โดยบังคับ Center เสมอ
+      function placeNode(node, startPos, depth, currentVPos) {
+        const sw = subW.get(node.id);
+        const ch = children.get(node.id) || [];
+        
+        const myW = layoutDir === 'right' ? (node.el.offsetHeight || 50) : (node.el.offsetWidth || 120);
+        
+        if (layoutDir === 'right') {
+          node.y = anchorY + startPos + (sw / 2) - (myW / 2);
+          node.x = anchorX + currentVPos;
         } else {
-          const fd=depthOf.get(fb.id)??0, td=depthOf.get(tb.id)??0;
-          if(layoutDir==='right'){
-            if(td>fd){c.fromSide='right';c.toSide='left';}
-            else if(fd>td){c.fromSide='left';c.toSide='right';}
-            else if(fb.y<tb.y){c.fromSide='bottom';c.toSide='top';}
-            else{c.fromSide='top';c.toSide='bottom';}
-          } else {
-            if(td>fd){c.fromSide='bottom';c.toSide='top';}
-            else if(fd>td){c.fromSide='top';c.toSide='bottom';}
-            else if(fb.x<tb.x){c.fromSide='right';c.toSide='left';}
-            else{c.fromSide='left';c.toSide='right';}
-          }
+          node.x = anchorX + startPos + (sw / 2) - (myW / 2);
+          node.y = anchorY + currentVPos;
         }
+        
+        node.el.style.left = node.x + 'px';
+        node.el.style.top = node.y + 'px';
+
+        // วางกล่องลูกโดยหาระยะ Offset เพื่อให้กรุ๊ปของลูกอยู่ตรงกลางใต้โหนดแม่เป๊ะๆ
+        let totalChildrenW = 0;
+        ch.forEach((c, i) => { totalChildrenW += subW.get(c.id); if (i < ch.length - 1) totalChildrenW += H_GAP; });
+        
+        let childStartPos = startPos + (sw / 2) - (totalChildrenW / 2);
+        const nextVPos = currentVPos + (levelDim.get(depth) || 100) + V_GAP;
+
+        ch.forEach(c => {
+          placeNode(c, childStartPos, depth + 1, nextVPos);
+          childStartPos += subW.get(c.id) + H_GAP;
+        });
+      }
+
+      let currentOffset = 0;
+      roots.forEach(root => {
+        calcSubtreeSize(root);
+        placeNode(root, currentOffset, 0, 0);
+        currentOffset += subW.get(root.id) + (H_GAP * 2);
       });
 
-      redrawLines();schedSave();
+      targetConns.forEach(c => {
+        if(layoutDir === 'right'){ c.fromSide = 'right'; c.toSide = 'left'; } 
+        else { c.fromSide = 'bottom'; c.toSide = 'top'; }
+      });
+
+      if(useCanvasConnections){
+        const ids=new Set(targetBoxes.map(b=>b.id));
+        const dirty=conns.filter(c=>ids.has(c.from)||ids.has(c.to));
+        markDirtyConns(dirty);
+      } else targetBoxes.forEach(b=>updateConnsForBox(b));
+      schedSave();
     }
     if(!editing&&(e.key==='2'||e.code==='Digit2')&&selectedBoxes.size>1){
       e.preventDefault();
       pushHistory();
       const list=Array.from(selectedBoxes);
       const refBox=(selectedBox&&selectedBoxes.has(selectedBox))?selectedBox:list[0];
-      const targetY=refBox.y;
+      // align by vertical center instead of top edge
+      const refCenterY = refBox.y + (refBox.el.offsetHeight || 0) / 2;
       list.forEach(b=>{
-        b.y=targetY;
-        b.el.style.top=b.y+'px';
+        b.y = refCenterY - (b.el.offsetHeight || 0) / 2;
+        b.el.style.top = b.y+'px';
         boxes.forEach(child=>{
           if(child.attachedTo===b){
-            child.y=b.y+child.attachmentOffset.y;
-            child.el.style.top=child.y+'px';
+            child.y = b.y + child.attachmentOffset.y;
+            child.el.style.top = child.y+'px';
           }
         });
       });
-      redrawLines();
+      if(useCanvasConnections){
+        const ids=new Set(list.map(b=>b.id));
+        const dirty=conns.filter(c=>ids.has(c.from)||ids.has(c.to));
+        markDirtyConns(dirty);
+      } else list.forEach(b=>updateConnsForBox(b));
     }
     if(!editing&&(e.ctrlKey||e.metaKey)&&isKey(e,'c')&&selectedBox){
       e.preventDefault();
@@ -4340,19 +4335,54 @@ var qrcode = function() {
       selectBox(nb);applyTransform();
     }
   });
-  function redrawLines(){
+  // immediate redraw (does the heavy work)
+  function redrawLinesImmediate(){
+    const t0 = performance.now();
     schedSave();
-    while(svg.firstChild) svg.removeChild(svg.firstChild);
+    // full rebuild: if canvas mode active, draw on canvas; otherwise rebuild SVG elements
     let maxX=2000,maxY=2000;
     boxes.forEach(b=>{maxX=Math.max(maxX,b.x+b.el.offsetWidth+400);maxY=Math.max(maxY,b.y+b.el.offsetHeight+400);});
     svg.setAttribute('width',maxX);svg.setAttribute('height',maxY);
     world.style.width=maxX+'px';world.style.height=maxY+'px';
-    conns.forEach(c=>{
-      const a=boxes.find(b=>b.id===c.from),b=boxes.find(b=>b.id===c.to);
-      if(!a||!b) return;
-      drawElbow(anchorPoint(a,c.fromSide||'bottom'),anchorPoint(b,c.toSide||'top'),c.fromSide||'bottom',c.toSide||'top',c);
-    });
+    if(useCanvasConnections && connCtx){
+      // prepare canvas for world-sized drawing (handle devicePixelRatio)
+      const dpr = window.devicePixelRatio || 1;
+      connCanvas.style.width = maxX + 'px'; connCanvas.style.height = maxY + 'px';
+      connCanvas.width = Math.max(1, Math.round(maxX * dpr));
+      connCanvas.height = Math.max(1, Math.round(maxY * dpr));
+      connCtx.setTransform(dpr,0,0,dpr,0,0);
+      // hide SVG to avoid double-draw
+      svg.style.display='none';
+      // draw all connections to canvas
+      drawConnsCanvas();
+    } else {
+      // ensure svg visible
+      svg.style.display='block';
+      // clear svg and conn element cache, then recreate all connection elems
+      while(svg.firstChild) svg.removeChild(svg.firstChild);
+      for(const k in connEls) delete connEls[k];
+      conns.forEach(c=>{const a=boxes.find(b=>b.id===c.from),b=boxes.find(b2=>b2.id===c.to);if(!a||!b) return;updateConn(c);});
+    }
+    const t1 = performance.now();
+    const dt = t1 - t0; window.__perfStats.redraws++; window.__perfStats.totalTime += dt; window.__perfStats.last = dt;
+    if(window.__perfStats.redraws % 20 === 0) console.debug('redraw avg', (window.__perfStats.totalTime/window.__perfStats.redraws).toFixed(2)+'ms', 'last', dt.toFixed(2)+'ms');
   }
+
+  // throttled redraw: prefer calling this from high-frequency events (mousemove)
+  function redrawLines(evt){
+    // If an event with mouse coords was provided, apply a small movement threshold
+    if(evt && evt.clientX!==undefined && evt.clientY!==undefined){
+      const rect=wrap.getBoundingClientRect();
+      const mx=(evt.clientX-rect.left), my=(evt.clientY-rect.top);
+      if(Math.hypot(mx-lastRedrawMousePos.x,my-lastRedrawMousePos.y)<REDRAW_THRESHOLD) return;
+      lastRedrawMousePos.x=mx; lastRedrawMousePos.y=my;
+    }
+    if(redrawPending) return;
+    redrawPending=true;
+    requestAnimationFrame(()=>{redrawPending=false;redrawLinesImmediate();});
+  }
+  // expose immediate version for callers that need synchronous redraw
+  redrawLines.now = redrawLinesImmediate;
   function anchorPoint(box,side){
     const w=box.el.offsetWidth*(box.isHeader?1/scale:1),h=box.el.offsetHeight*(box.isHeader?1/scale:1);
     const cx=box.x+w/2,cy=box.y+h/2;
@@ -4360,28 +4390,133 @@ var qrcode = function() {
     if(side==='left') return{x:box.x,y:cy};if(side==='right') return{x:box.x+w,y:cy};
     return{x:cx,y:box.y+h};
   }
-  function drawElbow(p1,p2,sA,sB,connObj){
+  function computeElbowD(p1,p2,sA,sB){
     const hA=(sA==='left'||sA==='right'),hB=(sB==='left'||sB==='right');
-    let d;
-    if(hA&&hB){const mx=(p1.x+p2.x)/2;d=`M${p1.x} ${p1.y}L${mx} ${p1.y}L${mx} ${p2.y}L${p2.x} ${p2.y}`;}
-    else if(!hA&&!hB){const my=(p1.y+p2.y)/2;d=Math.abs(p1.x-p2.x)<2?`M${p1.x} ${p1.y}L${p2.x} ${p2.y}`:`M${p1.x} ${p1.y}L${p1.x} ${my}L${p2.x} ${my}L${p2.x} ${p2.y}`;}
-    else if(hA&&!hB) d=`M${p1.x} ${p1.y}L${p2.x} ${p1.y}L${p2.x} ${p2.y}`;
-    else d=`M${p1.x} ${p1.y}L${p1.x} ${p2.y}L${p2.x} ${p2.y}`;
-    const hit=document.createElementNS('http://www.w3.org/2000/svg','path');
-    hit.setAttribute('d',d);hit.setAttribute('class','connHit');
-    hit.addEventListener('click',e=>{e.stopPropagation();clearSelection();selectConn(connObj);});
-    svg.appendChild(hit);
-    const path=document.createElementNS('http://www.w3.org/2000/svg','path');
-    path.setAttribute('d',d);path.setAttribute('class','connLine'+(selectedConn===connObj?' connSelected':''));
-    const lineColor=(connObj&&connObj.color)||getComputedStyle(document.documentElement).getPropertyValue('--line');
-    path.setAttribute('stroke',lineColor);
-    path.setAttribute('stroke-width',2.5);path.setAttribute('fill','none');
-    path.setAttribute('stroke-linecap','round');path.setAttribute('stroke-linejoin','round');
-    svg.appendChild(path);
-    const dot=document.createElementNS('http://www.w3.org/2000/svg','circle');
-    dot.setAttribute('cx',p2.x);dot.setAttribute('cy',p2.y);dot.setAttribute('r',4);
-    dot.setAttribute('fill',lineColor);
-    svg.appendChild(dot);
+    if(hA&&hB){const mx=(p1.x+p2.x)/2;return `M${p1.x} ${p1.y}L${mx} ${p1.y}L${mx} ${p2.y}L${p2.x} ${p2.y}`;}
+    if(!hA&&!hB){const my=(p1.y+p2.y)/2;return Math.abs(p1.x-p2.x)<2?`M${p1.x} ${p1.y}L${p2.x} ${p2.y}`:`M${p1.x} ${p1.y}L${p1.x} ${my}L${p2.x} ${my}L${p2.x} ${p2.y}`;}
+    if(hA&&!hB) return `M${p1.x} ${p1.y}L${p2.x} ${p1.y}L${p2.x} ${p2.y}`;
+    return `M${p1.x} ${p1.y}L${p1.x} ${p2.y}L${p2.x} ${p2.y}`;
+  }
+
+  // Canvas renderer for connections (prototype)
+  // If `dirty` is provided (array of conn objects), only clear+redraw the region covering those conns.
+  function drawConnsCanvas(dirty){
+    if(!connCtx) return;
+    connCtx.lineWidth = 2.5;
+    connCtx.lineCap = 'round';
+    connCtx.lineJoin = 'round';
+    // Ensure canvas has reasonable size (in case called before a full redraw)
+    if((connCanvas.width===0||connCanvas.height===0) && world){
+      const maxX = Math.max(2000, world.offsetWidth || 2000);
+      const maxY = Math.max(2000, world.offsetHeight || 2000);
+      const dpr = window.devicePixelRatio || 1;
+      connCanvas.style.width = maxX + 'px'; connCanvas.style.height = maxY + 'px';
+      connCanvas.width = Math.round(maxX * dpr); connCanvas.height = Math.round(maxY * dpr);
+      connCtx.setTransform(dpr,0,0,dpr,0,0);
+    }
+    const padding = 24;
+    if(!dirty || dirty.length===0){
+      // full clear + draw
+      connCtx.clearRect(0,0,connCanvas.width,connCanvas.height);
+      conns.forEach(conn=>{
+        drawConnToCanvas(conn);
+      });
+      return;
+    }
+    // compute dirty bbox in user (CSS) pixels
+    let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
+    dirty.forEach(conn=>{
+      const a=boxes.find(b=>b.id===conn.from), bb=boxes.find(b2=>b2.id===conn.to);
+      if(!a||!bb) return;
+      const p1=anchorPoint(a,conn.fromSide||'bottom');
+      const p2=anchorPoint(bb,conn.toSide||'top');
+      minX=Math.min(minX,p1.x,p2.x);minY=Math.min(minY,p1.y,p2.y);
+      maxX=Math.max(maxX,p1.x,p2.x);maxY=Math.max(maxY,p1.y,p2.y);
+    });
+    if(!isFinite(minX)) return; // nothing to draw
+    minX -= padding; minY -= padding; maxX += padding; maxY += padding;
+    const w = Math.max(1,maxX-minX), h = Math.max(1,maxY-minY);
+    // clear region (user coords; transform already set)
+    connCtx.clearRect(minX, minY, w, h);
+    // redraw any conns that intersect this bbox
+    conns.forEach(conn=>{
+      const a=boxes.find(b=>b.id===conn.from), bb=boxes.find(b2=>b2.id===conn.to);
+      if(!a||!bb) return;
+      const p1=anchorPoint(a,conn.fromSide||'bottom');
+      const p2=anchorPoint(bb,conn.toSide||'top');
+      const cx1=Math.min(p1.x,p2.x), cy1=Math.min(p1.y,p2.y), cx2=Math.max(p1.x,p2.x), cy2=Math.max(p1.y,p2.y);
+      // quick bbox intersection
+      if(cx2 < minX || cx1 > maxX || cy2 < minY || cy1 > maxY) return;
+      drawConnToCanvas(conn);
+    });
+  }
+
+  function drawConnToCanvas(conn){
+    const a=boxes.find(b=>b.id===conn.from), b=boxes.find(b2=>b2.id===conn.to);
+    if(!a||!b) return;
+    const p1=anchorPoint(a,conn.fromSide||'bottom');
+    const p2=anchorPoint(b,conn.toSide||'top');
+    const lineColor=(conn&&conn.color)||getComputedStyle(document.documentElement).getPropertyValue('--line');
+    connCtx.strokeStyle = lineColor;
+    connCtx.fillStyle = lineColor;
+    connCtx.beginPath();
+    const hA=(conn.fromSide==='left'||conn.fromSide==='right');
+    const hB=(conn.toSide==='left'||conn.toSide==='right');
+    if(hA&&hB){
+      const mx=(p1.x+p2.x)/2;
+      connCtx.moveTo(p1.x,p1.y); connCtx.lineTo(mx,p1.y); connCtx.lineTo(mx,p2.y); connCtx.lineTo(p2.x,p2.y);
+    } else if(!hA&&!hB){
+      const my=(p1.y+p2.y)/2;
+      if(Math.abs(p1.x-p2.x)<2){ connCtx.moveTo(p1.x,p1.y); connCtx.lineTo(p2.x,p2.y); }
+      else { connCtx.moveTo(p1.x,p1.y); connCtx.lineTo(p1.x,my); connCtx.lineTo(p2.x,my); connCtx.lineTo(p2.x,p2.y); }
+    } else if(hA&&!hB){
+      connCtx.moveTo(p1.x,p1.y); connCtx.lineTo(p2.x,p1.y); connCtx.lineTo(p2.x,p2.y);
+    } else {
+      connCtx.moveTo(p1.x,p1.y); connCtx.lineTo(p1.x,p2.y); connCtx.lineTo(p2.x,p2.y);
+    }
+    connCtx.stroke();
+    connCtx.beginPath(); connCtx.arc(p2.x,p2.y,4,0,Math.PI*2); connCtx.fill();
+  }
+
+  function updateConn(conn){
+    if(useCanvasConnections){ markDirtyConns([conn]); return; }
+    // ensure conn has id
+    if(!conn.id) conn.id = 'c'+(connIdCounter++);
+    const a=boxes.find(b=>b.id===conn.from), b=boxes.find(b2=>b2.id===conn.to);
+    if(!a||!b) return;
+    const p1=anchorPoint(a,conn.fromSide||'bottom');
+    const p2=anchorPoint(b,conn.toSide||'top');
+    const d=computeElbowD(p1,p2,conn.fromSide||'bottom',conn.toSide||'top');
+    let entry=connEls[conn.id];
+    const lineColor=(conn&&conn.color)||getComputedStyle(document.documentElement).getPropertyValue('--line');
+    if(entry){
+      entry.hit.setAttribute('d',d);
+      entry.path.setAttribute('d',d);entry.path.setAttribute('stroke',lineColor);
+      entry.dot.setAttribute('cx',p2.x);entry.dot.setAttribute('cy',p2.y);entry.dot.setAttribute('fill',lineColor);
+    } else {
+      const ns='http://www.w3.org/2000/svg';
+      const hit=document.createElementNS(ns,'path');hit.setAttribute('d',d);hit.setAttribute('class','connHit');
+      hit.addEventListener('click',e=>{e.stopPropagation();clearSelection();selectConn(conn);});
+      const path=document.createElementNS(ns,'path');path.setAttribute('d',d);path.setAttribute('class','connLine'+(selectedConn===conn?' connSelected':''));
+      path.setAttribute('stroke',lineColor);path.setAttribute('stroke-width',2.5);path.setAttribute('fill','none');path.setAttribute('stroke-linecap','round');path.setAttribute('stroke-linejoin','round');
+      const dot=document.createElementNS(ns,'circle');dot.setAttribute('cx',p2.x);dot.setAttribute('cy',p2.y);dot.setAttribute('r',4);dot.setAttribute('fill',lineColor);
+      svg.appendChild(hit);svg.appendChild(path);svg.appendChild(dot);
+      connEls[conn.id]={hit,path,dot};
+    }
+  }
+
+  function updateConnsForBox(box){
+    if(useCanvasConnections){
+      const dirty = conns.filter(c=>c.from===box.id||c.to===box.id);
+      if(dirty.length) drawConnsCanvas(dirty);
+      return;
+    }
+    conns.forEach(c=>{if(c.from===box.id||c.to===box.id) updateConn(c);});
+  }
+  // drawElbow kept for compatibility (full rebuild) — delegates to updateConn
+  function drawElbow(p1,p2,sA,sB,connObj){
+    if(useCanvasConnections){ if(connObj) drawConnsCanvas([connObj]); else drawConnsCanvas(); return; }
+    updateConn(connObj);
   }
   document.getElementById('btnExport').onclick=()=>{
     const data={boxes:boxes.map(b=>({id:b.id,x:b.x,y:b.y,text:b.titleEl.innerText,isHeader:b.isHeader,chips:b.chips,fixedW:b.fixedW,fixedH:b.fixedH,headerText:b.headerText||'',image:b.image||null,collapsed:b.collapsed||false,color:b.color||null,borderColor:b.borderColor||null,textColor:b.textColor||null})),conns,floatChips};
@@ -4401,8 +4536,8 @@ var qrcode = function() {
         boxes.forEach(b=>b.el.remove());boxes=[];conns=[];clearFloatChips();
         const idMap={};
         data.boxes.forEach(bd=>{const nb=addBox(bd.x,bd.y,bd.text,bd.isHeader,bd.chips||[],bd.fixedW||null,bd.fixedH||null,bd.headerText||'',bd.image||null);idMap[bd.id]=nb.id;if(bd.collapsed) setBoxCollapsed(nb,true);applyBoxColors(nb,bd.color||null,bd.borderColor||null,bd.textColor||null);});
-        conns=(data.conns||[]).map(c=>({from:idMap[c.from],to:idMap[c.to],fromSide:c.fromSide||'bottom',toSide:c.toSide||'top',color:c.color||null})).filter(c=>c.from&&c.to);(data.floatChips||[]).forEach(fc=>addFloatChip(fc.x,fc.y,fc.text));
-        redrawLines();applyTransform();saveToCache();
+        conns=(data.conns||[]).map(c=>({id:c.id||('c'+(connIdCounter++)),from:idMap[c.from],to:idMap[c.to],fromSide:c.fromSide||'bottom',toSide:c.toSide||'top',color:c.color||null})).filter(c=>c.from&&c.to);(data.floatChips||[]).forEach(fc=>addFloatChip(fc.x,fc.y,fc.text));
+        redrawLines.now();applyTransform();saveToCache();
       }catch(err){alert('ไฟล์ไม่ถูกต้อง: '+err.message);}
     };
     reader.readAsText(file);
@@ -4797,7 +4932,7 @@ var qrcode = function() {
     function open(){
       // reset to the "I need your money" state every open
       titleEl.textContent='สนับสนุนผู้พัฒนา';
-      subEl.innerHTML='แอปนี้ฟรีและจะฟรีตลอด ปรับแต่งได้ทุกอย่าง<br>ถ้าชอบและอยากเลี้ยงมาม่าผมสักห่อ ขอบคุณมากครับ 🙏';
+      subEl.innerHTML='แอปนี้ฟรีและจะฟรีตลอด ไม่ต้องบริจาคก็ได้ถ้ามันลำบาก<br>แต่ถ้าไม่ลำบาก ก็ส่งตังมาซะดีๆ ';
       thankBtn.style.display='';laterBtn.style.display='';
       channelsEl.style.display='';
       popMascot(SUP_IMG.money);
@@ -4810,7 +4945,7 @@ var qrcode = function() {
       channelsEl.style.display='none';
       thankBtn.style.display='none';
       titleEl.textContent='ขอบคุณมากครับ! 🧡';
-      subEl.innerHTML='ส้มเกลาดีใจสุดๆ เลย ขอบคุณที่สนับสนุนนะครับ 🙏<br>มาม่าอีกห่อกำลังมา~';
+      subEl.innerHTML='ขอบคุณคนโง่อีก 1 คนที่บริจาคมา 🙏<br>เงินนี้จะถูกนำไปลงทุนในบาคาร่าอย่างดี~';
       laterBtn.textContent='ปิด';
       popMascot(SUP_IMG.thanks);
     }
@@ -4838,7 +4973,7 @@ var qrcode = function() {
       const h1=addBox(320,20,'แผนกองค์กร',true);
       const n1=addBox(180,130,'สัตว์',false,[{id:'c1',text:'หมา'},{id:'c2',text:'แมว'},{id:'c3',text:'นก'}]);
       const n2=addBox(480,130,'ผลไม้',false,[{id:'c4',text:'แอปเปิ้ล'},{id:'c5',text:'มะม่วง'}]);
-      conns.push({from:n1.id,to:n2.id,fromSide:'right',toSide:'left'});
+      conns.push({id:'c'+(connIdCounter++),from:n1.id,to:n2.id,fromSide:'right',toSide:'left'});
       applyTransform();
     }
   })();
