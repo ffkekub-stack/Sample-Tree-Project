@@ -37,7 +37,6 @@
   #canvasWrap.panning{cursor:grabbing;}
   #world{position:absolute;top:0;left:0;transform-origin:0 0;width:1px;height:1px;}
   svg#lines{position:absolute;top:0;left:0;overflow:visible;}
-  canvas#connCanvas{position:absolute;top:0;left:0;overflow:visible;pointer-events:none;}
   .connLine{cursor:pointer;pointer-events:stroke;}
   .connLine:hover{stroke:#ff5c5c !important;}
   .connLine.connSelected{stroke:#ff5c5c !important;stroke-width:3.5 !important;}
@@ -228,7 +227,8 @@
   #btnSupport:hover{filter:brightness(1.08);}
   #supOverlay{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:520;display:none;align-items:center;justify-content:center;}
   #supOverlay.open{display:flex;}
-  #supDialog{position:relative;background:var(--panel);border:1px solid #3a4358;border-radius:16px;box-shadow:0 18px 52px rgba(0,0,0,.6);padding:22px 24px 20px;width:380px;max-width:92vw;text-align:center;box-sizing:border-box;max-height:calc(100vh - 80px);overflow:auto;}
+  #supDialog{position:relative;background:var(--panel);border:1px solid #3a4358;border-radius:16px;box-shadow:0 18px 52px rgba(0,0,0,.6);padding:22px 24px 20px;width:380px;max-width:92vw;text-align:center;box-sizing:border-box;max-height:calc(100vh - 80px);overflow:auto;scrollbar-width:none;}
+  #supDialog::-webkit-scrollbar{display:none;}
   #supClose{position:absolute;top:12px;right:12px;width:36px;height:36px;border:none;border-radius:8px;background:rgba(255,255,255,.08);color:#aab4c8;font-size:16px;cursor:pointer;z-index:9999;}
   #supClose:hover{background:rgba(255,255,255,.18);color:#fff;}
   #supMascot{width:150px;height:auto;display:block;margin:0 auto;image-rendering:auto;transition:opacity .15s,transform .25s;}
@@ -245,6 +245,7 @@
   .sup-ch a.sup-btn{display:inline-block;margin-top:4px;background:var(--accent);color:#fff;text-decoration:none;border-radius:9px;padding:9px 18px;font-size:13.5px;font-weight:600;}
   .sup-ch a.sup-btn.kofi{background:#13C3FF;}
   .sup-ch a.sup-btn.paypal{background:#0070BA;}
+
   .sup-ch a.sup-btn:hover{filter:brightness(1.08);}
   .sup-copy{margin-top:8px;display:flex;gap:6px;justify-content:center;align-items:center;flex-wrap:wrap;}
   .sup-copy code{background:#11151c;color:#cfd8ec;border-radius:6px;padding:5px 8px;font-size:12px;}
@@ -469,6 +470,8 @@
       <button id="btnZoomReset" title="รีเซ็ตมุมมอง">⤢</button>
     </div>
     <div class="sep"></div>
+    <button id="btnLang" title="เปลี่ยนภาษา / Switch Language" style="font-size:13px;min-width:52px;">🌐 EN</button>
+    <div class="sep"></div>
     <button id="btnSupport" title="สนับสนุนผู้พัฒนา">❤️ สนับสนุน</button>
     <div class="tb-menu-wrap">
       <button id="btnMore" title="เมนูเพิ่มเติม">⋯ เมนู</button>
@@ -523,7 +526,7 @@
 <div id="mobileConnectHint">🔗 แตะ anchor (จุดสีฟ้า) เพื่อเชื่อมต่อ — แตะ ✕ เพื่อยกเลิก</div>
 
 <div id="canvasWrap">
-  <div id="world"><canvas id="connCanvas"></canvas><svg id="lines"></svg></div>
+  <div id="world"><svg id="lines"></svg></div>
   <div id="selectRect"></div>
 </div>
 <div id="hint">
@@ -2915,7 +2918,8 @@ var qrcode = function() {
     bankName: 'ไทยพาณิชย์ (SCB)',      // ชื่อธนาคาร (เว้นว่าง = ซ่อน)
     bankAccount: '322-250-7470',       // เลขบัญชีธนาคาร
     kofi: '',          // <-- ใส่ลิงก์ Ko-fi เช่น 'https://ko-fi.com/yourname'
-    paypal: ''         // <-- ใส่ลิงก์ PayPal เช่น 'https://paypal.me/yourname'
+    paypal: '',        // <-- ใส่ลิงก์ PayPal เช่น 'https://paypal.me/yourname'
+    buymeacoffee: 'https://buymeacoffee.com/bbkekub'  // Buy Me a Coffee
   };
   // รูปมาสคอต 'ส้มเกลา' สำหรับหน้าสนับสนุน (ฝัง base64)
   const SUP_IMG = {
@@ -2927,41 +2931,13 @@ var qrcode = function() {
   const world=document.getElementById('world');
   const wrap=document.getElementById('canvasWrap');
   const svg=document.getElementById('lines');
-  const connCanvas = document.getElementById('connCanvas');
-  const connCtx = connCanvas.getContext?connCanvas.getContext('2d'):null;
-  let useCanvasConnections = false; // prototype: draw connections on canvas (faster at scale)
-  // TOGGLE: ลองพิมพ์ window.toggleCanvasMode() ในคอนโซล เพื่อสลับ SVG <-> Canvas
-  // dirty coalescing for canvas draws
-  let pendingDirtyConns = new Set();
-  let dirtyDrawPending = false;
-  function markDirtyConns(arr){
-    if(!useCanvasConnections) return;
-    if(!arr) { drawConnsCanvas(); return; }
-    const list = Array.isArray(arr)?arr:[arr];
-    list.forEach(c=>{ if(c && c.id) pendingDirtyConns.add(c.id); });
-    if(dirtyDrawPending) return;
-    dirtyDrawPending = true;
-    requestAnimationFrame(()=>{
-      dirtyDrawPending = false;
-      const ids = Array.from(pendingDirtyConns); pendingDirtyConns.clear();
-      const connsToDraw = ids.map(id=>conns.find(c=>c.id===id)).filter(Boolean);
-      if(connsToDraw.length) drawConnsCanvas(connsToDraw);
-    });
-  }
-  // TOGGLE FUNCTION: ลองพิมพ์ window.toggleCanvasMode() ในคอนโซล
-  window.toggleCanvasMode = () => { useCanvasConnections = !useCanvasConnections; redrawLines.now(); console.log('Canvas mode:', useCanvasConnections); };
   let scale=1,panX=0,panY=0;
   let boxes=[],conns=[],idCounter=1;
-  // redraw throttle state: schedule actual redraws via rAF and ignore tiny moves
-  let redrawPending=false;
-  let lastRedrawMousePos={x:0,y:0};
-  const REDRAW_THRESHOLD=2; // pixels
+  const boxMap=new Map(); // id→box lookup O(1)
+  const headerBoxes=new Set(); // เฉพาะ header box สำหรับ applyTransform loop
+  let _wrapRect=null;     // cache getBoundingClientRect ระหว่าง drag
+  function getWrapRect(){return _wrapRect||(wrap.getBoundingClientRect());}
   let floatChips=[],floatChipIdCounter=1;
-  // connection element cache and id counter for incremental updates
-  let connIdCounter=1;
-  const connEls = Object.create(null); // map conn.id -> {hit,path,dot}
-  // perf stats
-  window.__perfStats = window.__perfStats || {redraws:0,totalTime:0,last:0};
   let connectMode=false,connectSource=null;
   let selectedBox=null,selectedConn=null;
   let layoutDir='down'; // 'down' = top-to-bottom, 'right' = left-to-right
@@ -2984,14 +2960,14 @@ var qrcode = function() {
       const raw=localStorage.getItem(CACHE_KEY);if(!raw) return false;
       const data=JSON.parse(raw);
       clearTimeout(saveTimer);
-      boxes.forEach(b=>b.el.remove());boxes=[];conns=[];clearFloatChips();
+      boxes.forEach(b=>b.el.remove());boxes=[];boxMap.clear();headerBoxes.clear();conns=[];clearFloatChips();
       const idMap={};
       data.boxes.forEach(bd=>{const nb=addBox(bd.x,bd.y,bd.text,bd.isHeader,bd.chips||[],bd.fixedW||null,bd.fixedH||null,bd.headerText||'',bd.image||null);idMap[bd.id]=nb.id;if(bd.collapsed) setBoxCollapsed(nb,true);applyBoxColors(nb,bd.color||null,bd.borderColor||null,bd.textColor||null);});
-      conns=(data.conns||[]).map(c=>({id:c.id||('c'+(connIdCounter++)),from:idMap[c.from],to:idMap[c.to],fromSide:c.fromSide||'bottom',toSide:c.toSide||'top',color:c.color||null})).filter(c=>c.from&&c.to);(data.floatChips||[]).forEach(fc=>addFloatChip(fc.x,fc.y,fc.text));
+      conns=(data.conns||[]).map(c=>({from:idMap[c.from],to:idMap[c.to],fromSide:c.fromSide||'bottom',toSide:c.toSide||'top',color:c.color||null})).filter(c=>c.from&&c.to);(data.floatChips||[]).forEach(fc=>addFloatChip(fc.x,fc.y,fc.text));
       if(data.scale) scale=data.scale;
       if(data.panX!==undefined) panX=data.panX;
       if(data.panY!==undefined) panY=data.panY;
-      redrawLines.now();applyTransform();
+      applyTransform();
       return true;
     }catch(e){return false;}
   }
@@ -3029,38 +3005,74 @@ var qrcode = function() {
   }
   function loadSaveData(data){
     clearTimeout(saveTimer);
-    boxes.forEach(b=>b.el.remove());boxes=[];conns=[];clearFloatChips();
+    boxes.forEach(b=>b.el.remove());boxes=[];boxMap.clear();headerBoxes.clear();conns=[];clearFloatChips();
     const idMap={};
     data.boxes.forEach(bd=>{const nb=addBox(bd.x,bd.y,bd.text,bd.isHeader,bd.chips||[],bd.fixedW||null,bd.fixedH||null,bd.headerText||'',bd.image||null);idMap[bd.id]=nb.id;if(bd.collapsed) setBoxCollapsed(nb,true);applyBoxColors(nb,bd.color||null,bd.borderColor||null,bd.textColor||null);});
-    conns=(data.conns||[]).map(c=>({id:c.id||('c'+(connIdCounter++)),from:idMap[c.from],to:idMap[c.to],fromSide:c.fromSide||'bottom',toSide:c.toSide||'top',color:c.color||null})).filter(c=>c.from&&c.to);(data.floatChips||[]).forEach(fc=>addFloatChip(fc.x,fc.y,fc.text));
+    conns=(data.conns||[]).map(c=>({from:idMap[c.from],to:idMap[c.to],fromSide:c.fromSide||'bottom',toSide:c.toSide||'top',color:c.color||null})).filter(c=>c.from&&c.to);(data.floatChips||[]).forEach(fc=>addFloatChip(fc.x,fc.y,fc.text));
     if(data.scale) scale=data.scale;
     if(data.panX!==undefined) panX=data.panX;
     if(data.panY!==undefined) panY=data.panY;
-    redrawLines.now();applyTransform();
+    applyTransform();
   }
 
   // ===== UNDO / REDO =====
-  // Snapshot-based history: เก็บสถานะ boxes/conns ทั้งหมดเป็นช่วงๆ
+  // Snapshot-based history พร้อม image deduplication:
+  // รูปภาพ (base64) เก็บใน imgStore Map แยกต่างหาก snapshot เก็บแค่ key
+  // ทำให้ history 80 ช่องไม่ clone base64 ซ้ำทุก snapshot
   let undoStack=[],redoStack=[];
-  let isRestoring=false; // กันไม่ให้การ undo/redo เอง push history ซ้ำ
+  let isRestoring=false;
   const HISTORY_LIMIT=80;
+
+  const _imgStore=new Map(); // key(hash) → dataUrl
+  function _imgKey(dataUrl){
+    // ใช้ 64 ตัวแรกของ base64 เป็น key (เร็ว, ชนกันแทบเป็นไปไม่ได้)
+    return dataUrl?dataUrl.slice(0,64):null;
+  }
+  function _storeImg(dataUrl){
+    if(!dataUrl) return null;
+    const k=_imgKey(dataUrl);
+    if(!_imgStore.has(k)) _imgStore.set(k,dataUrl);
+    return k;
+  }
+  function _resolveImg(key){
+    return key?(_imgStore.get(key)||null):null;
+  }
+
   function snapshotNow(){
-    // ใช้ข้อมูลเดียวกับ getCurrentSaveData แต่ deep-clone กัน mutate ทับของเก่า
-    return JSON.parse(JSON.stringify(getCurrentSaveData()));
+    // clone แบบ shallow แล้ว inline แค่ field ที่เปลี่ยนได้ — ไม่ clone base64
+    const data=getCurrentSaveData();
+    return {
+      boxes: data.boxes.map(b=>({
+        id:b.id,x:b.x,y:b.y,text:b.text,isHeader:b.isHeader,
+        chips:JSON.parse(JSON.stringify(b.chips||[])),
+        fixedW:b.fixedW,fixedH:b.fixedH,headerText:b.headerText||'',
+        imageKey:_storeImg(b.image),  // เก็บแค่ key ไม่เก็บ base64 ซ้ำ
+        collapsed:b.collapsed||false,
+        color:b.color||null,borderColor:b.borderColor||null,textColor:b.textColor||null
+      })),
+      conns: JSON.parse(JSON.stringify(data.conns||[])),
+      floatChips: JSON.parse(JSON.stringify(data.floatChips||[])),
+      panX:data.panX,panY:data.panY,scale:data.scale
+    };
+  }
+  function restoreSnapshot(snap){
+    isRestoring=true;
+    clearSelection();clearMultiSelection();clearConnSelection();cancelConnect();
+    // แปลง imageKey กลับเป็น dataUrl ก่อนส่ง loadSaveData
+    const resolved={
+      ...snap,
+      boxes: snap.boxes.map(b=>({...b, image:_resolveImg(b.imageKey||null)}))
+    };
+    loadSaveData(resolved);
+    isRestoring=false;
+    schedSave();
+    updateUndoRedoUI();
   }
   function pushHistory(){
     if(isRestoring) return;
     undoStack.push(snapshotNow());
     if(undoStack.length>HISTORY_LIMIT) undoStack.shift();
     redoStack=[];
-    updateUndoRedoUI();
-  }
-  function restoreSnapshot(snap){
-    isRestoring=true;
-    clearSelection();clearMultiSelection();clearConnSelection();cancelConnect();
-    loadSaveData(snap);
-    isRestoring=false;
-    schedSave();
     updateUndoRedoUI();
   }
   function performUndo(){
@@ -3105,6 +3117,7 @@ var qrcode = function() {
       }catch(e){
         prompt('คัดลอกลิงก์นี้ไปแชร์ได้เลย:',url);
       }
+      if(window.__maybeShowSupportAfterExport) window.__maybeShowSupportAfterExport();
     }catch(e){alert('สร้างลิงก์ไม่สำเร็จ: '+e.message);}
   };
   async function loadFromShareHash(){
@@ -3127,7 +3140,7 @@ var qrcode = function() {
     if(confirm('ล้างข้อมูลที่บันทึกไว้ทั้งหมดหรือไม่?')){
       pushHistory();
       localStorage.removeItem(CACHE_KEY);
-      boxes.forEach(b=>b.el.remove());boxes=[];conns=[];clearFloatChips();
+      boxes.forEach(b=>b.el.remove());boxes=[];boxMap.clear();headerBoxes.clear();conns=[];clearFloatChips();
       scale=1;panX=0;panY=0;applyTransform();
     }
   };
@@ -3212,7 +3225,7 @@ var qrcode = function() {
         pushHistory();
         editingBox.titleEl.innerText='';
       }
-      redrawLines.now();
+      redrawLines();
     }
     editPanel.classList.remove('open');editOverlay.classList.remove('open');
     editingBox=null;
@@ -3227,12 +3240,12 @@ var qrcode = function() {
       if(!textValue) return;
       if(e.ctrlKey||e.metaKey){
         if(editingBox && !editingBox.isHeader){
-            pushHistory();
-            editingBox.setHeaderText(textValue);
-            updateConnsForBox(editingBox);
-            epTextarea.value='';
-            return;
-          }
+          pushHistory();
+          editingBox.setHeaderText(textValue);
+          redrawLines();
+          epTextarea.value='';
+          return;
+        }
       } else {
         if(editingBox){
           pushHistory();
@@ -3246,13 +3259,17 @@ var qrcode = function() {
     if(e.key==='Escape'){e.preventDefault();closeEditPanel(false);}
   });
 
-  function applyTransform(){
+  function _applyTransformOnly(){
+    // อัปเดต CSS transform + zoom label อย่างเดียว ไม่ redraw เส้น
     world.style.transform=`translate(${panX}px,${panY}px) scale(${scale})`;
     document.getElementById('zoomLabel').textContent=Math.round(scale*100)+'%';
-    boxes.forEach(b=>{
-      if(b.isHeader){b.el.style.transform=`scale(${1/scale})`;b.el.style.transformOrigin='top left';}
-      else b.el.style.transform='';
+    headerBoxes.forEach(b=>{
+      b.el.style.transform=`scale(${1/scale})`;
+      b.el.style.transformOrigin='top left';
     });
+  }
+  function applyTransform(){
+    _applyTransformOnly();
     redrawLines();
   }
   wrap.addEventListener('wheel',e=>{
@@ -3275,6 +3292,9 @@ var qrcode = function() {
     panX=mx-wx*scale;panY=my-wy*scale;applyTransform();
   }
   let panning=false,panStart=null;
+  // cache wrapRect ตอนเริ่ม interaction แล้วเคลียร์ตอนปล่อย
+  function cacheWrapRect(){_wrapRect=wrap.getBoundingClientRect();}
+  function clearWrapRect(){_wrapRect=null;}
   let selectedBoxes=new Set();
   window.addEventListener('keydown',e=>{if(e.key==='Alt') e.preventDefault();});
   let rubberSelecting=false,rubberStart=null;
@@ -3283,7 +3303,7 @@ var qrcode = function() {
     selectedBoxes.forEach(b=>b.el.classList.remove('multi-selected'));
     selectedBoxes.clear();
   }
-  wrap.addEventListener('mousedown',e=>{
+  wrap.addEventListener('mousedown',e=>{cacheWrapRect();
     if(e.target===wrap||e.target===world||e.target===svg){
       if(e.altKey){
         rubberSelecting=true;
@@ -3307,10 +3327,10 @@ var qrcode = function() {
       selectRectEl.style.width=(x2-x1)+'px';selectRectEl.style.height=(y2-y1)+'px';
       return;
     }
-    if(panning){panX=panStart.panX+(e.clientX-panStart.x);panY=panStart.panY+(e.clientY-panStart.y);applyTransform();}
+    if(panning){panX=panStart.panX+(e.clientX-panStart.x);panY=panStart.panY+(e.clientY-panStart.y);_applyTransformOnly();}
     if(dragBox){
       if(!dragBoxHistoryPushed){pushHistory();dragBoxHistoryPushed=true;}
-      const rect=wrap.getBoundingClientRect();
+      const rect=getWrapRect();
       dragBox.x=(e.clientX-rect.left-panX)/scale-dragOffset.x;
       dragBox.y=(e.clientY-rect.top-panY)/scale-dragOffset.y;
       dragBox.el.style.left=dragBox.x+'px';dragBox.el.style.top=dragBox.y+'px';
@@ -3322,13 +3342,12 @@ var qrcode = function() {
           child.el.style.top=child.y+'px';
         }
       });
-      // update only connections related to the dragged box
-      updateConnsForBox(dragBox);
+      redrawLines();
       if(cpTarget&&cpTarget.type==='box'&&cpTarget.box===dragBox) positionColorPop();
     }
     if(groupDrag){
       if(!groupDrag.historyPushed){pushHistory();groupDrag.historyPushed=true;}
-      const rect=wrap.getBoundingClientRect();
+      const rect=getWrapRect();
       const mx=(e.clientX-rect.left-panX)/scale,my=(e.clientY-rect.top-panY)/scale;
       const dx=mx-groupDrag.startMouse.x,dy=my-groupDrag.startMouse.y;
       groupDrag.boxes.forEach(b=>{
@@ -3344,14 +3363,7 @@ var qrcode = function() {
           }
         });
       });
-      // batch update connections for all moved boxes (collect unique conns)
-      if(useCanvasConnections){
-        const movedIds=new Set(groupDrag.boxes.map(b=>b.id));
-        const dirtyConns=conns.filter(c=>movedIds.has(c.from)||movedIds.has(c.to));
-        drawConnsCanvas(dirtyConns);
-      } else {
-        groupDrag.boxes.forEach(b=>updateConnsForBox(b));
-      }
+      redrawLines();
     }
     if(chipDrag) moveChipGhost(e);
     if(floatDrag) moveFloatDrag(e);
@@ -3380,7 +3392,7 @@ var qrcode = function() {
     }
     if(panning) schedSave();
     if(groupDrag) schedSave();
-    panning=false;wrap.classList.remove('panning');dragBox=null;groupDrag=null;dragBoxHistoryPushed=false;
+    panning=false;wrap.classList.remove('panning');dragBox=null;groupDrag=null;dragBoxHistoryPushed=false;clearWrapRect();
     if(chipDrag) dropChip(e);
     if(floatDrag) dropFloatDrag(e);
     if(connectDragging){
@@ -3424,7 +3436,7 @@ var qrcode = function() {
     box.el.style.color=box.textColor||'';
     box.titleEl.style.color=box.textColor||'';
     // keep header subheader / placeholder legible too
-    updateConnsForBox(box);
+    redrawLines();
   }
 
   function setBoxCollapsed(box,val){
@@ -3433,7 +3445,7 @@ var qrcode = function() {
     box.el.querySelector('.box-collapse').textContent=val?'+':'–';
     const n=box.chips.length;
     box.collapseCount.textContent=n?('▦ '+n+' ไอเท็ม'+(box.image?' • 🖼️':'')):(box.image?'🖼️ มีรูป':'(ว่าง)');
-    updateConnsForBox(box);
+    redrawLines();
   }
 
   function addBox(x,y,text,isHeader,chips=[],initFixedW=null,initFixedH=null,headerText='',initImage=null){
@@ -3483,7 +3495,7 @@ var qrcode = function() {
     const rSE=document.createElement('div');rSE.className='resize-handle resize-se';el.appendChild(rSE);
     world.appendChild(el);
     const box={id:'b'+(idCounter++),el,x,y,isHeader,chips:[],titleEl,childrenEl,headerEl,fixedW:null,fixedH:null,headerText:headerText||'',image:null,collapsed:false,collapseCount,color:null,borderColor:null,textColor:null};
-    boxes.push(box);
+    boxes.push(box);boxMap.set(box.id,box);if(isHeader) headerBoxes.add(box);
 
     collapseBtn.addEventListener('mousedown',e=>e.stopPropagation());
     collapseBtn.addEventListener('touchstart',e=>e.stopPropagation(),{passive:true});
@@ -3500,7 +3512,7 @@ var qrcode = function() {
       imgEl.src=dataUrl;
       imgWrap.style.display='block';
       imgUploadBtn.querySelector('span:last-child').textContent='เปลี่ยนรูป';
-      updateConnsForBox(box);schedSave();
+      redrawLines();schedSave();
     }
     function clearBoxImage(){
       pushHistory();
@@ -3508,7 +3520,7 @@ var qrcode = function() {
       imgEl.src='';
       imgWrap.style.display='none';
       imgUploadBtn.querySelector('span:last-child').textContent='เพิ่มรูปภาพ';
-      updateConnsForBox(box);schedSave();
+      redrawLines();schedSave();
     }
     imgDel.addEventListener('mousedown',e=>e.stopPropagation());
     imgDel.addEventListener('click',e=>{e.stopPropagation();clearBoxImage();});
@@ -3550,7 +3562,7 @@ var qrcode = function() {
       el.classList.toggle('fixed-w',box.fixedW!==null);
       el.style.height=box.fixedH!==null?box.fixedH+'px':'';
       el.classList.toggle('fixed-h',box.fixedH!==null);
-      updateConnsForBox(box);
+      redrawLines();
     }
     function startResize(e,doW,doH){
       e.stopPropagation();e.preventDefault();selectBox(box);
@@ -3685,7 +3697,7 @@ var qrcode = function() {
       if(willShow) chip.classList.add('show-del');
     });
     attachChipTouchDrag(chip,del);
-    box.childrenEl.appendChild(chip);if(box.collapsed) setBoxCollapsed(box,true);updateConnsForBox(box);return chip;
+    box.childrenEl.appendChild(chip);if(box.collapsed) setBoxCollapsed(box,true);redrawLines();return chip;
   }
   // ===== TOUCH DRAG FOR CHIPS (ลากไอเท็มข้ามกล่อง บนมือถือ) =====
   // แตะเฉยๆ (ไม่ขยับ) = tap เปิด/ปิดปุ่มลบ, แตะค้างแล้วลาก = ย้ายไอเท็ม
@@ -3726,7 +3738,7 @@ var qrcode = function() {
   function removeChip(box,chipId){
     box.chips=box.chips.filter(c=>c.id!==chipId);
     const el=box.childrenEl.querySelector(`[data-chip-id="${chipId}"]`);
-    if(el) el.remove();if(box.collapsed) setBoxCollapsed(box,true);updateConnsForBox(box);
+    if(el) el.remove();if(box.collapsed) setBoxCollapsed(box,true);redrawLines();
   }
   function startChipDrag(e,box,chipData,chipEl){
     chipDrag={box,chipData,chipEl};chipEl.classList.add('dragging-chip');
@@ -3967,8 +3979,8 @@ var qrcode = function() {
   }
   function selectBox(box){clearConnSelection();if(selectedBox) selectedBox.el.classList.remove('selected');selectedBox=box;box.el.classList.add('selected');showColorPopForBox(box);}
   function clearSelection(){if(selectedBox) selectedBox.el.classList.remove('selected');selectedBox=null;hideColorPop();}
-  function selectConn(c){clearSelection();selectedConn=c;redrawLines.now();showColorPopForConn(c);}
-  function clearConnSelection(){selectedConn=null;redrawLines.now();hideColorPop();}
+  function selectConn(c){clearSelection();selectedConn=c;redrawLines();showColorPopForConn(c);}
+  function clearConnSelection(){selectedConn=null;redrawLines();hideColorPop();}
 
   // ===== COLOR POPOVER =====
   const colorPop=document.getElementById('colorPop');
@@ -4040,7 +4052,7 @@ var qrcode = function() {
     colorPopBody.appendChild(title);
     colorPopBody.appendChild(makeSwatchRow('สีเส้น',LINE_PALETTE,conn.color,true,(col,live)=>{
       if(live!==false) pushHistory();
-      conn.color=col||null; if(useCanvasConnections) markDirtyConns([conn]); else updateConn(conn); schedSave();
+      conn.color=col||null;redrawLines();schedSave();
       if(typeof live==='undefined') refreshColorPop();
     }));
     positionColorPop();
@@ -4110,21 +4122,13 @@ var qrcode = function() {
     if(connectSource&&connectSource.box!==targetBox){
       pushHistory();
       const srcColor=connectSource.box.borderColor||null;
-      conns.push({id:'c'+(connIdCounter++),from:connectSource.box.id,to:targetBox.id,fromSide:connectSource.side,toSide:side||'top',color:srcColor});redrawLines.now();
+      conns.push({from:connectSource.box.id,to:targetBox.id,fromSide:connectSource.side,toSide:side||'top',color:srcColor});redrawLines();
     }
     cancelConnect();
   }
   function cancelConnect(){if(connectSource) connectSource.box.el.classList.remove('connect-source');connectSource=null;}
-  function deleteBox(box){
-    // remove related connections and their svg elements
-    conns.filter(c=>c.from===box.id||c.to===box.id).forEach(c=>{if(c.id&&connEls[c.id]){const e=connEls[c.id];e.hit.remove();e.path.remove();e.dot.remove();delete connEls[c.id];}});
-    conns=conns.filter(c=>c.from!==box.id&&c.to!==box.id);
-    box.el.remove();boxes=boxes.filter(b=>b!==box);selectedBox=null;redrawLines.now();
-  }
-  function deleteConn(c){
-    if(c.id&&connEls[c.id]){const e=connEls[c.id];e.hit.remove();e.path.remove();e.dot.remove();delete connEls[c.id];}
-    conns=conns.filter(x=>x!==c);selectedConn=null;redrawLines.now();
-  }
+  function deleteBox(box){conns=conns.filter(c=>c.from!==box.id&&c.to!==box.id);box.el.remove();boxes=boxes.filter(b=>b!==box);boxMap.delete(box.id);headerBoxes.delete(box);selectedBox=null;redrawLines();}
+  function deleteConn(c){conns=conns.filter(x=>x!==c);selectedConn=null;redrawLines();}
   document.getElementById('btnDelete').onclick=()=>{
     if(selectedBox||selectedConn||selectedBoxes.size>0){
       pushHistory();
@@ -4174,11 +4178,7 @@ var qrcode = function() {
           }
         });
       });
-      if(useCanvasConnections){
-        const ids=new Set(list.map(b=>b.id));
-        const dirty=conns.filter(c=>ids.has(c.from)||ids.has(c.to));
-        markDirtyConns(dirty);
-      } else list.forEach(b=>updateConnsForBox(b));
+      redrawLines();
     }
     // กด 3 → Auto-layout: จัดกล่องที่เลือกไว้ (ถ้าไม่มีที่เลือก = จัดทั้งหมด) toggle down/right
     if(!editing&&(e.key==='3'||e.code==='Digit3')){
@@ -4293,11 +4293,7 @@ var qrcode = function() {
         else { c.fromSide = 'bottom'; c.toSide = 'top'; }
       });
 
-      if(useCanvasConnections){
-        const ids=new Set(targetBoxes.map(b=>b.id));
-        const dirty=conns.filter(c=>ids.has(c.from)||ids.has(c.to));
-        markDirtyConns(dirty);
-      } else targetBoxes.forEach(b=>updateConnsForBox(b));
+      redrawLines(); 
       schedSave();
     }
     if(!editing&&(e.key==='2'||e.code==='Digit2')&&selectedBoxes.size>1){
@@ -4317,11 +4313,7 @@ var qrcode = function() {
           }
         });
       });
-      if(useCanvasConnections){
-        const ids=new Set(list.map(b=>b.id));
-        const dirty=conns.filter(c=>ids.has(c.from)||ids.has(c.to));
-        markDirtyConns(dirty);
-      } else list.forEach(b=>updateConnsForBox(b));
+      redrawLines();
     }
     if(!editing&&(e.ctrlKey||e.metaKey)&&isKey(e,'c')&&selectedBox){
       e.preventDefault();
@@ -4335,54 +4327,29 @@ var qrcode = function() {
       selectBox(nb);applyTransform();
     }
   });
-  // immediate redraw (does the heavy work)
-  function redrawLinesImmediate(){
-    const t0 = performance.now();
+  // --- rAF-throttled redraw: ไม่ว่าจะเรียกกี่ครั้งใน frame เดียว วาดจริงแค่ครั้งเดียว ---
+  let _redrawPending=false;
+  function redrawLines(){
     schedSave();
-    // full rebuild: if canvas mode active, draw on canvas; otherwise rebuild SVG elements
+    if(_redrawPending) return;
+    _redrawPending=true;
+    requestAnimationFrame(()=>{
+      _redrawPending=false;
+      _doRedrawLines();
+    });
+  }
+  function _doRedrawLines(){
+    while(svg.firstChild) svg.removeChild(svg.firstChild);
     let maxX=2000,maxY=2000;
     boxes.forEach(b=>{maxX=Math.max(maxX,b.x+b.el.offsetWidth+400);maxY=Math.max(maxY,b.y+b.el.offsetHeight+400);});
     svg.setAttribute('width',maxX);svg.setAttribute('height',maxY);
     world.style.width=maxX+'px';world.style.height=maxY+'px';
-    if(useCanvasConnections && connCtx){
-      // prepare canvas for world-sized drawing (handle devicePixelRatio)
-      const dpr = window.devicePixelRatio || 1;
-      connCanvas.style.width = maxX + 'px'; connCanvas.style.height = maxY + 'px';
-      connCanvas.width = Math.max(1, Math.round(maxX * dpr));
-      connCanvas.height = Math.max(1, Math.round(maxY * dpr));
-      connCtx.setTransform(dpr,0,0,dpr,0,0);
-      // hide SVG to avoid double-draw
-      svg.style.display='none';
-      // draw all connections to canvas
-      drawConnsCanvas();
-    } else {
-      // ensure svg visible
-      svg.style.display='block';
-      // clear svg and conn element cache, then recreate all connection elems
-      while(svg.firstChild) svg.removeChild(svg.firstChild);
-      for(const k in connEls) delete connEls[k];
-      conns.forEach(c=>{const a=boxes.find(b=>b.id===c.from),b=boxes.find(b2=>b2.id===c.to);if(!a||!b) return;updateConn(c);});
-    }
-    const t1 = performance.now();
-    const dt = t1 - t0; window.__perfStats.redraws++; window.__perfStats.totalTime += dt; window.__perfStats.last = dt;
-    if(window.__perfStats.redraws % 20 === 0) console.debug('redraw avg', (window.__perfStats.totalTime/window.__perfStats.redraws).toFixed(2)+'ms', 'last', dt.toFixed(2)+'ms');
+    conns.forEach(c=>{
+      const a=boxMap.get(c.from),b=boxMap.get(c.to);
+      if(!a||!b) return;
+      drawElbow(anchorPoint(a,c.fromSide||'bottom'),anchorPoint(b,c.toSide||'top'),c.fromSide||'bottom',c.toSide||'top',c);
+    });
   }
-
-  // throttled redraw: prefer calling this from high-frequency events (mousemove)
-  function redrawLines(evt){
-    // If an event with mouse coords was provided, apply a small movement threshold
-    if(evt && evt.clientX!==undefined && evt.clientY!==undefined){
-      const rect=wrap.getBoundingClientRect();
-      const mx=(evt.clientX-rect.left), my=(evt.clientY-rect.top);
-      if(Math.hypot(mx-lastRedrawMousePos.x,my-lastRedrawMousePos.y)<REDRAW_THRESHOLD) return;
-      lastRedrawMousePos.x=mx; lastRedrawMousePos.y=my;
-    }
-    if(redrawPending) return;
-    redrawPending=true;
-    requestAnimationFrame(()=>{redrawPending=false;redrawLinesImmediate();});
-  }
-  // expose immediate version for callers that need synchronous redraw
-  redrawLines.now = redrawLinesImmediate;
   function anchorPoint(box,side){
     const w=box.el.offsetWidth*(box.isHeader?1/scale:1),h=box.el.offsetHeight*(box.isHeader?1/scale:1);
     const cx=box.x+w/2,cy=box.y+h/2;
@@ -4390,139 +4357,35 @@ var qrcode = function() {
     if(side==='left') return{x:box.x,y:cy};if(side==='right') return{x:box.x+w,y:cy};
     return{x:cx,y:box.y+h};
   }
-  function computeElbowD(p1,p2,sA,sB){
-    const hA=(sA==='left'||sA==='right'),hB=(sB==='left'||sB==='right');
-    if(hA&&hB){const mx=(p1.x+p2.x)/2;return `M${p1.x} ${p1.y}L${mx} ${p1.y}L${mx} ${p2.y}L${p2.x} ${p2.y}`;}
-    if(!hA&&!hB){const my=(p1.y+p2.y)/2;return Math.abs(p1.x-p2.x)<2?`M${p1.x} ${p1.y}L${p2.x} ${p2.y}`:`M${p1.x} ${p1.y}L${p1.x} ${my}L${p2.x} ${my}L${p2.x} ${p2.y}`;}
-    if(hA&&!hB) return `M${p1.x} ${p1.y}L${p2.x} ${p1.y}L${p2.x} ${p2.y}`;
-    return `M${p1.x} ${p1.y}L${p1.x} ${p2.y}L${p2.x} ${p2.y}`;
-  }
-
-  // Canvas renderer for connections (prototype)
-  // If `dirty` is provided (array of conn objects), only clear+redraw the region covering those conns.
-  function drawConnsCanvas(dirty){
-    if(!connCtx) return;
-    connCtx.lineWidth = 2.5;
-    connCtx.lineCap = 'round';
-    connCtx.lineJoin = 'round';
-    // Ensure canvas has reasonable size (in case called before a full redraw)
-    if((connCanvas.width===0||connCanvas.height===0) && world){
-      const maxX = Math.max(2000, world.offsetWidth || 2000);
-      const maxY = Math.max(2000, world.offsetHeight || 2000);
-      const dpr = window.devicePixelRatio || 1;
-      connCanvas.style.width = maxX + 'px'; connCanvas.style.height = maxY + 'px';
-      connCanvas.width = Math.round(maxX * dpr); connCanvas.height = Math.round(maxY * dpr);
-      connCtx.setTransform(dpr,0,0,dpr,0,0);
-    }
-    const padding = 24;
-    if(!dirty || dirty.length===0){
-      // full clear + draw
-      connCtx.clearRect(0,0,connCanvas.width,connCanvas.height);
-      conns.forEach(conn=>{
-        drawConnToCanvas(conn);
-      });
-      return;
-    }
-    // compute dirty bbox in user (CSS) pixels
-    let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
-    dirty.forEach(conn=>{
-      const a=boxes.find(b=>b.id===conn.from), bb=boxes.find(b2=>b2.id===conn.to);
-      if(!a||!bb) return;
-      const p1=anchorPoint(a,conn.fromSide||'bottom');
-      const p2=anchorPoint(bb,conn.toSide||'top');
-      minX=Math.min(minX,p1.x,p2.x);minY=Math.min(minY,p1.y,p2.y);
-      maxX=Math.max(maxX,p1.x,p2.x);maxY=Math.max(maxY,p1.y,p2.y);
-    });
-    if(!isFinite(minX)) return; // nothing to draw
-    minX -= padding; minY -= padding; maxX += padding; maxY += padding;
-    const w = Math.max(1,maxX-minX), h = Math.max(1,maxY-minY);
-    // clear region (user coords; transform already set)
-    connCtx.clearRect(minX, minY, w, h);
-    // redraw any conns that intersect this bbox
-    conns.forEach(conn=>{
-      const a=boxes.find(b=>b.id===conn.from), bb=boxes.find(b2=>b2.id===conn.to);
-      if(!a||!bb) return;
-      const p1=anchorPoint(a,conn.fromSide||'bottom');
-      const p2=anchorPoint(bb,conn.toSide||'top');
-      const cx1=Math.min(p1.x,p2.x), cy1=Math.min(p1.y,p2.y), cx2=Math.max(p1.x,p2.x), cy2=Math.max(p1.y,p2.y);
-      // quick bbox intersection
-      if(cx2 < minX || cx1 > maxX || cy2 < minY || cy1 > maxY) return;
-      drawConnToCanvas(conn);
-    });
-  }
-
-  function drawConnToCanvas(conn){
-    const a=boxes.find(b=>b.id===conn.from), b=boxes.find(b2=>b2.id===conn.to);
-    if(!a||!b) return;
-    const p1=anchorPoint(a,conn.fromSide||'bottom');
-    const p2=anchorPoint(b,conn.toSide||'top');
-    const lineColor=(conn&&conn.color)||getComputedStyle(document.documentElement).getPropertyValue('--line');
-    connCtx.strokeStyle = lineColor;
-    connCtx.fillStyle = lineColor;
-    connCtx.beginPath();
-    const hA=(conn.fromSide==='left'||conn.fromSide==='right');
-    const hB=(conn.toSide==='left'||conn.toSide==='right');
-    if(hA&&hB){
-      const mx=(p1.x+p2.x)/2;
-      connCtx.moveTo(p1.x,p1.y); connCtx.lineTo(mx,p1.y); connCtx.lineTo(mx,p2.y); connCtx.lineTo(p2.x,p2.y);
-    } else if(!hA&&!hB){
-      const my=(p1.y+p2.y)/2;
-      if(Math.abs(p1.x-p2.x)<2){ connCtx.moveTo(p1.x,p1.y); connCtx.lineTo(p2.x,p2.y); }
-      else { connCtx.moveTo(p1.x,p1.y); connCtx.lineTo(p1.x,my); connCtx.lineTo(p2.x,my); connCtx.lineTo(p2.x,p2.y); }
-    } else if(hA&&!hB){
-      connCtx.moveTo(p1.x,p1.y); connCtx.lineTo(p2.x,p1.y); connCtx.lineTo(p2.x,p2.y);
-    } else {
-      connCtx.moveTo(p1.x,p1.y); connCtx.lineTo(p1.x,p2.y); connCtx.lineTo(p2.x,p2.y);
-    }
-    connCtx.stroke();
-    connCtx.beginPath(); connCtx.arc(p2.x,p2.y,4,0,Math.PI*2); connCtx.fill();
-  }
-
-  function updateConn(conn){
-    if(useCanvasConnections){ markDirtyConns([conn]); return; }
-    // ensure conn has id
-    if(!conn.id) conn.id = 'c'+(connIdCounter++);
-    const a=boxes.find(b=>b.id===conn.from), b=boxes.find(b2=>b2.id===conn.to);
-    if(!a||!b) return;
-    const p1=anchorPoint(a,conn.fromSide||'bottom');
-    const p2=anchorPoint(b,conn.toSide||'top');
-    const d=computeElbowD(p1,p2,conn.fromSide||'bottom',conn.toSide||'top');
-    let entry=connEls[conn.id];
-    const lineColor=(conn&&conn.color)||getComputedStyle(document.documentElement).getPropertyValue('--line');
-    if(entry){
-      entry.hit.setAttribute('d',d);
-      entry.path.setAttribute('d',d);entry.path.setAttribute('stroke',lineColor);
-      entry.dot.setAttribute('cx',p2.x);entry.dot.setAttribute('cy',p2.y);entry.dot.setAttribute('fill',lineColor);
-    } else {
-      const ns='http://www.w3.org/2000/svg';
-      const hit=document.createElementNS(ns,'path');hit.setAttribute('d',d);hit.setAttribute('class','connHit');
-      hit.addEventListener('click',e=>{e.stopPropagation();clearSelection();selectConn(conn);});
-      const path=document.createElementNS(ns,'path');path.setAttribute('d',d);path.setAttribute('class','connLine'+(selectedConn===conn?' connSelected':''));
-      path.setAttribute('stroke',lineColor);path.setAttribute('stroke-width',2.5);path.setAttribute('fill','none');path.setAttribute('stroke-linecap','round');path.setAttribute('stroke-linejoin','round');
-      const dot=document.createElementNS(ns,'circle');dot.setAttribute('cx',p2.x);dot.setAttribute('cy',p2.y);dot.setAttribute('r',4);dot.setAttribute('fill',lineColor);
-      svg.appendChild(hit);svg.appendChild(path);svg.appendChild(dot);
-      connEls[conn.id]={hit,path,dot};
-    }
-  }
-
-  function updateConnsForBox(box){
-    if(useCanvasConnections){
-      const dirty = conns.filter(c=>c.from===box.id||c.to===box.id);
-      if(dirty.length) drawConnsCanvas(dirty);
-      return;
-    }
-    conns.forEach(c=>{if(c.from===box.id||c.to===box.id) updateConn(c);});
-  }
-  // drawElbow kept for compatibility (full rebuild) — delegates to updateConn
   function drawElbow(p1,p2,sA,sB,connObj){
-    if(useCanvasConnections){ if(connObj) drawConnsCanvas([connObj]); else drawConnsCanvas(); return; }
-    updateConn(connObj);
+    const hA=(sA==='left'||sA==='right'),hB=(sB==='left'||sB==='right');
+    let d;
+    if(hA&&hB){const mx=(p1.x+p2.x)/2;d=`M${p1.x} ${p1.y}L${mx} ${p1.y}L${mx} ${p2.y}L${p2.x} ${p2.y}`;}
+    else if(!hA&&!hB){const my=(p1.y+p2.y)/2;d=Math.abs(p1.x-p2.x)<2?`M${p1.x} ${p1.y}L${p2.x} ${p2.y}`:`M${p1.x} ${p1.y}L${p1.x} ${my}L${p2.x} ${my}L${p2.x} ${p2.y}`;}
+    else if(hA&&!hB) d=`M${p1.x} ${p1.y}L${p2.x} ${p1.y}L${p2.x} ${p2.y}`;
+    else d=`M${p1.x} ${p1.y}L${p1.x} ${p2.y}L${p2.x} ${p2.y}`;
+    const hit=document.createElementNS('http://www.w3.org/2000/svg','path');
+    hit.setAttribute('d',d);hit.setAttribute('class','connHit');
+    hit.addEventListener('click',e=>{e.stopPropagation();clearSelection();selectConn(connObj);});
+    svg.appendChild(hit);
+    const path=document.createElementNS('http://www.w3.org/2000/svg','path');
+    path.setAttribute('d',d);path.setAttribute('class','connLine'+(selectedConn===connObj?' connSelected':''));
+    const lineColor=(connObj&&connObj.color)||getComputedStyle(document.documentElement).getPropertyValue('--line');
+    path.setAttribute('stroke',lineColor);
+    path.setAttribute('stroke-width',2.5);path.setAttribute('fill','none');
+    path.setAttribute('stroke-linecap','round');path.setAttribute('stroke-linejoin','round');
+    svg.appendChild(path);
+    const dot=document.createElementNS('http://www.w3.org/2000/svg','circle');
+    dot.setAttribute('cx',p2.x);dot.setAttribute('cy',p2.y);dot.setAttribute('r',4);
+    dot.setAttribute('fill',lineColor);
+    svg.appendChild(dot);
   }
   document.getElementById('btnExport').onclick=()=>{
     const data={boxes:boxes.map(b=>({id:b.id,x:b.x,y:b.y,text:b.titleEl.innerText,isHeader:b.isHeader,chips:b.chips,fixedW:b.fixedW,fixedH:b.fixedH,headerText:b.headerText||'',image:b.image||null,collapsed:b.collapsed||false,color:b.color||null,borderColor:b.borderColor||null,textColor:b.textColor||null})),conns,floatChips};
     const a=document.createElement('a');
     a.href=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}));
     a.download='chart.json';a.click();
+    if(window.__maybeShowSupportAfterExport) window.__maybeShowSupportAfterExport();
   };
   document.getElementById('btnImport').onclick=()=>document.getElementById('fileInput').click();
   document.getElementById('fileInput').onchange=e=>{
@@ -4533,11 +4396,11 @@ var qrcode = function() {
         const data=JSON.parse(reader.result);
         pushHistory();
         clearTimeout(saveTimer);
-        boxes.forEach(b=>b.el.remove());boxes=[];conns=[];clearFloatChips();
+        boxes.forEach(b=>b.el.remove());boxes=[];boxMap.clear();headerBoxes.clear();conns=[];clearFloatChips();
         const idMap={};
         data.boxes.forEach(bd=>{const nb=addBox(bd.x,bd.y,bd.text,bd.isHeader,bd.chips||[],bd.fixedW||null,bd.fixedH||null,bd.headerText||'',bd.image||null);idMap[bd.id]=nb.id;if(bd.collapsed) setBoxCollapsed(nb,true);applyBoxColors(nb,bd.color||null,bd.borderColor||null,bd.textColor||null);});
-        conns=(data.conns||[]).map(c=>({id:c.id||('c'+(connIdCounter++)),from:idMap[c.from],to:idMap[c.to],fromSide:c.fromSide||'bottom',toSide:c.toSide||'top',color:c.color||null})).filter(c=>c.from&&c.to);(data.floatChips||[]).forEach(fc=>addFloatChip(fc.x,fc.y,fc.text));
-        redrawLines.now();applyTransform();saveToCache();
+        conns=(data.conns||[]).map(c=>({from:idMap[c.from],to:idMap[c.to],fromSide:c.fromSide||'bottom',toSide:c.toSide||'top',color:c.color||null})).filter(c=>c.from&&c.to);(data.floatChips||[]).forEach(fc=>addFloatChip(fc.x,fc.y,fc.text));
+        applyTransform();saveToCache();
       }catch(err){alert('ไฟล์ไม่ถูกต้อง: '+err.message);}
     };
     reader.readAsText(file);
@@ -4887,7 +4750,6 @@ var qrcode = function() {
         const head=document.createElement('div');head.className='sup-ch-head';head.textContent='💸 PromptPay';ch.appendChild(head);
         const gen=document.createElement('div');gen.className='sup-gen';gen.textContent='⏳ กำลังสร้าง QR...';ch.appendChild(gen);
         channelsEl.appendChild(ch);
-        // show excited "Ho!" while we generate, then reveal the QR
         popMascot(SUP_IMG.ho);
         setTimeout(()=>{
           try{
@@ -4923,7 +4785,13 @@ var qrcode = function() {
         const a=document.createElement('a');a.className='sup-btn paypal';a.href=cfg.paypal;a.target='_blank';a.rel='noopener';a.textContent='เปิด PayPal';
         ch.appendChild(a);channelsEl.appendChild(ch);
       }
-      if(!hasPP && !(cfg.bankName&&cfg.bankAccount) && !cfg.kofi && !cfg.paypal){
+      if(cfg.buymeacoffee){
+        const ch=document.createElement('div');ch.className='sup-ch';
+        const head=document.createElement('div');head.className='sup-ch-head';head.innerHTML='☕ Buy Me a Coffee';ch.appendChild(head);
+        const a=document.createElement('a');a.className='sup-btn bmac';a.href=cfg.buymeacoffee;a.target='_blank';a.rel='noopener';a.textContent='☕ buymeacoffee.com/bbkekub';
+        ch.appendChild(a);channelsEl.appendChild(ch);
+      }
+      if(!hasPP && !(cfg.bankName&&cfg.bankAccount) && !cfg.kofi && !cfg.paypal && !cfg.buymeacoffee){
         const e=document.createElement('div');e.className='sup-empty';e.textContent='(ผู้พัฒนายังไม่ได้ตั้งค่าช่องทางสนับสนุน)';
         channelsEl.appendChild(e);
       }
@@ -4956,13 +4824,10 @@ var qrcode = function() {
     overlay.addEventListener('mousedown',e=>{if(e.target===overlay) close();});
     document.addEventListener('keydown',e=>{if(e.key==='Escape'&&overlay.classList.contains('open')) close();});
 
-    // เด้งครั้งเดียวหลัง export รูปสำเร็จ (สุภาพ ไม่กวนซ้ำ)
+    // เด้งทุกครั้งหลัง export / share สำเร็จ (ถามสนับสนุน)
     window.__maybeShowSupportAfterExport=function(){
-      let seen=false;try{seen=localStorage.getItem(SEEN_KEY)==='1';}catch(e){}
-      if(seen) return;
-      const hasAny=(cfg.promptpay&&cfg.promptpay.replace(/[^0-9]/g,'').length>=10)||(cfg.bankName&&cfg.bankAccount)||cfg.kofi||cfg.paypal;
+      const hasAny=(cfg.promptpay&&cfg.promptpay.replace(/[^0-9]/g,'').length>=10)||(cfg.bankName&&cfg.bankAccount)||cfg.kofi||cfg.paypal||cfg.buymeacoffee;
       if(!hasAny) return;
-      try{localStorage.setItem(SEEN_KEY,'1');}catch(e){}
       setTimeout(open,900);
     };
   })();
@@ -4973,7 +4838,7 @@ var qrcode = function() {
       const h1=addBox(320,20,'แผนกองค์กร',true);
       const n1=addBox(180,130,'สัตว์',false,[{id:'c1',text:'หมา'},{id:'c2',text:'แมว'},{id:'c3',text:'นก'}]);
       const n2=addBox(480,130,'ผลไม้',false,[{id:'c4',text:'แอปเปิ้ล'},{id:'c5',text:'มะม่วง'}]);
-      conns.push({id:'c'+(connIdCounter++),from:n1.id,to:n2.id,fromSide:'right',toSide:'left'});
+      conns.push({from:n1.id,to:n2.id,fromSide:'right',toSide:'left'});
       applyTransform();
     }
   })();
@@ -5582,6 +5447,239 @@ var qrcode = function() {
     }
   }, {passive:false});
 
+})();
+</script>
+
+<!-- ===== LANGUAGE TOGGLE (TH / EN) ===== -->
+<script>
+(function(){
+  var LANG_KEY = 'sampleTreeLang';
+  var currentLang = localStorage.getItem(LANG_KEY) || 'th';
+
+  var i18n = {
+    th: {
+      btnUndo:         { title:'เลิกทำ (Ctrl+Z)', text:'↩️' },
+      btnRedo:         { title:'ทำซ้ำ (Ctrl+Y)',  text:'↪️' },
+      btnAddBox:       { title:'เพิ่มกล่อง',       text:'➕ กล่อง' },
+      btnAddHeader:    { title:'เพิ่มหัวข้อ',       text:'🏷️ หัวข้อ' },
+      btnConnect:      { title:'เชื่อมต่อ',          text:'🔗 เชื่อม' },
+      btnDuplicate:    { title:'คัดลอกกล่อง',        text:'📋 คัดลอก' },
+      btnDelete:       { title:'ลบที่เลือก',          text:'🗑️ ลบ' },
+      btnSupport:      { title:'สนับสนุนผู้พัฒนา',   text:'❤️ สนับสนุน' },
+      btnMore:         { title:'เมนูเพิ่มเติม',       text:'⋯ เมนู' },
+      btnLang:         { title:'เปลี่ยนภาษา / Switch Language', text:'🌐 EN' },
+      btnZoomOut:      { title:'ซูมออก' },
+      btnZoomIn:       { title:'ซูมเข้า' },
+      btnZoomReset:    { title:'รีเซ็ตมุมมอง' },
+      btnExportPng:    { text:'🖼️ บันทึกเป็นรูป PNG' },
+      btnExport:       { text:'💾 บันทึก JSON' },
+      btnImport:       { text:'📂 โหลด JSON' },
+      btnShare:        { text:'🔗 แชร์ลิงก์' },
+      btnNewPage:      { text:'📄 หน้าใหม่' },
+      btnClearCache:   { text:'🗑️ ล้างแคช' },
+      boxSearchInput:  { placeholder:'ค้นหากล่อง...' },
+      epLabel:         { text:'แก้ไขข้อความ' },
+      epTextarea:      { placeholder:'พิมพ์ข้อความที่นี่...' },
+      epCancel:        { text:'ปิด (Esc)' },
+      epSave:          { text:'บันทึก (Enter)' },
+      epBtnAddChip:    { text:'➕ เพิ่มไอเท็ม' },
+      epBtnSetHeader:  { text:'🏷️ ตั้งหัวข้อกล่อง' },
+      stashPanelTitle: { text:'📦 พื้นที่พัก' },
+      stashDropZone:   { text:'ลากไอเท็มมาวางที่นี่' },
+      stashText:       { placeholder:'พิมพ์แล้วกด เพิ่ม' },
+      stashAdd:        { text:'เพิ่ม' },
+      hintShow:        { text:'❔ คำแนะนำ' },
+      hintToggle:      { title:'ซ่อนคำแนะนำ' },
+      hintText:        { html:'ดับเบิลคลิกพื้นว่าง = เพิ่มกล่อง &nbsp;•&nbsp; ดับเบิลคลิกชื่อกล่อง = แก้ไข &nbsp;•&nbsp; กด <strong style="color:#5b8def;">Shift+Enter</strong> = เพิ่มไอเท็มในกล่อง &nbsp;•&nbsp; กด <strong style="color:#5b8def;">Ctrl+Shift+Enter</strong> = สร้างหัวข้อด้านบน &nbsp;•&nbsp; ลากไอเท็ม = ย้ายไปกล่องอื่น &nbsp;•&nbsp; ลากกล่อง = ย้ายกล่อง &nbsp;•&nbsp; <strong style="color:#5b8def;">ลากขอบขวา</strong> = กำหนดความกว้าง &nbsp;•&nbsp; <strong style="color:#5b8def;">ลากขอบล่าง</strong> = กำหนดความสูง &nbsp;•&nbsp; กด <strong style="color:#5b8def;">Ctrl+Z</strong> = เลิกทำ &nbsp;•&nbsp; กด <strong style="color:#5b8def;">Ctrl+Y</strong> = ทำซ้ำ' },
+      pngDialogTitle:  { text:'🖼️ บันทึกผังเป็นรูป PNG' },
+      pngDialogSub:    { text:'พื้นหลังโปร่งใส • ครอบเฉพาะผังทั้งหมดอัตโนมัติ' },
+      pngCancel:       { text:'ยกเลิก' },
+      pngGo:           { text:'💾 ดาวน์โหลด' },
+      stashBtn:        { title:'กระเป๋าพัก' },
+      mobileConnectHint: { text:'🔗 แตะ anchor (จุดสีฟ้า) เพื่อเชื่อมต่อ — แตะ ✕ เพื่อยกเลิก' },
+      mbAdd:           { label:'เพิ่ม' },
+      mbConnect:       { label:'เชื่อม' },
+      mbDelete:        { label:'ลบ' },
+      mbStash:         { label:'พัก' },
+      mbMore:          { label:'เพิ่มเติม' },
+      fUndo:           { text:'เลิกทำ' },
+      fRedo:           { text:'ทำซ้ำ' },
+      fAddHeader:      { text:'เพิ่มหัวข้อ' },
+      fDuplicate:      { text:'คัดลอกกล่อง' },
+      fExport:         { text:'บันทึก JSON' },
+      fImport:         { text:'โหลด JSON' },
+      fShare:          { text:'แชร์ลิงก์' },
+      fClear:          { text:'ล้างข้อมูล' },
+      fNewPage:        { text:'หน้าใหม่' },
+      fReset:          { text:'รีเซ็ตมุมมอง' },
+      supTitle:        { text:'สนับสนุนผู้พัฒนา' },
+      supSub:          { html:'แอปนี้ฟรีและจะฟรีตลอด ปรับแต่งได้ทุกอย่าง<br>ถ้าชอบและอยากเลี้ยงมาม่าผมสักห่อ ขอบคุณมากครับ 🙏' },
+      supThank:        { text:'💖 จะบริจาคแล้ว!' },
+      supLater:        { text:'ไว้ทีหลัง' },
+    },
+    en: {
+      btnUndo:         { title:'Undo (Ctrl+Z)', text:'↩️' },
+      btnRedo:         { title:'Redo (Ctrl+Y)',  text:'↪️' },
+      btnAddBox:       { title:'Add Box',        text:'➕ Box' },
+      btnAddHeader:    { title:'Add Header',      text:'🏷️ Header' },
+      btnConnect:      { title:'Connect',         text:'🔗 Connect' },
+      btnDuplicate:    { title:'Duplicate Box',   text:'📋 Copy' },
+      btnDelete:       { title:'Delete Selected', text:'🗑️ Delete' },
+      btnSupport:      { title:'Support Developer', text:'❤️ Support' },
+      btnMore:         { title:'More Options',    text:'⋯ Menu' },
+      btnLang:         { title:'เปลี่ยนภาษา / Switch Language', text:'🌐 TH' },
+      btnZoomOut:      { title:'Zoom Out' },
+      btnZoomIn:       { title:'Zoom In' },
+      btnZoomReset:    { title:'Reset View' },
+      btnExportPng:    { text:'🖼️ Save as PNG' },
+      btnExport:       { text:'💾 Save JSON' },
+      btnImport:       { text:'📂 Load JSON' },
+      btnShare:        { text:'🔗 Share Link' },
+      btnNewPage:      { text:'📄 New Page' },
+      btnClearCache:   { text:'🗑️ Clear Cache' },
+      boxSearchInput:  { placeholder:'Search boxes...' },
+      epLabel:         { text:'Edit Text' },
+      epTextarea:      { placeholder:'Type text here...' },
+      epCancel:        { text:'Close (Esc)' },
+      epSave:          { text:'Save (Enter)' },
+      epBtnAddChip:    { text:'➕ Add Item' },
+      epBtnSetHeader:  { text:'🏷️ Set as Header' },
+      stashPanelTitle: { text:'📦 Stash Area' },
+      stashDropZone:   { text:'Drag items here' },
+      stashText:       { placeholder:'Type then press Add' },
+      stashAdd:        { text:'Add' },
+      hintShow:        { text:'❔ Tips' },
+      hintToggle:      { title:'Hide tips' },
+      hintText:        { html:'Double-click canvas = Add box &nbsp;•&nbsp; Double-click box title = Edit &nbsp;•&nbsp; Press <strong style="color:#5b8def;">Shift+Enter</strong> = Add item to box &nbsp;•&nbsp; Press <strong style="color:#5b8def;">Ctrl+Shift+Enter</strong> = Create header above &nbsp;•&nbsp; Drag item = Move to another box &nbsp;•&nbsp; Drag box = Move box &nbsp;•&nbsp; <strong style="color:#5b8def;">Drag right edge</strong> = Set width &nbsp;•&nbsp; <strong style="color:#5b8def;">Drag bottom edge</strong> = Set height &nbsp;•&nbsp; Press <strong style="color:#5b8def;">Ctrl+Z</strong> = Undo &nbsp;•&nbsp; Press <strong style="color:#5b8def;">Ctrl+Y</strong> = Redo' },
+      pngDialogTitle:  { text:'🖼️ Export Diagram as PNG' },
+      pngDialogSub:    { text:'Transparent background • Auto-fit to diagram' },
+      pngCancel:       { text:'Cancel' },
+      pngGo:           { text:'💾 Download' },
+      stashBtn:        { title:'Stash Panel' },
+      mobileConnectHint: { text:'🔗 Tap an anchor (blue dot) to connect — tap ✕ to cancel' },
+      mbAdd:           { label:'Add' },
+      mbConnect:       { label:'Connect' },
+      mbDelete:        { label:'Delete' },
+      mbStash:         { label:'Stash' },
+      mbMore:          { label:'More' },
+      fUndo:           { text:'Undo' },
+      fRedo:           { text:'Redo' },
+      fAddHeader:      { text:'Add Header' },
+      fDuplicate:      { text:'Duplicate Box' },
+      fExport:         { text:'Save JSON' },
+      fImport:         { text:'Load JSON' },
+      fShare:          { text:'Share Link' },
+      fClear:          { text:'Clear Data' },
+      fNewPage:        { text:'New Page' },
+      fReset:          { text:'Reset View' },
+      supTitle:        { text:'Support the Developer' },
+      supSub:          { html:'This app is free and will always be free.<br>If you enjoy it and want to buy me a coffee, thank you! 🙏' },
+      supThank:        { text:'💖 I\'ll donate!' },
+      supLater:        { text:'Maybe later' },
+    }
+  };
+
+  function applyLang(lang) {
+    var t = i18n[lang];
+    if(!t) return;
+
+    function setEl(id, opts) {
+      var el = document.getElementById(id);
+      if(!el) return;
+      if(opts.text !== undefined) el.textContent = opts.text;
+      if(opts.html !== undefined) el.innerHTML = opts.html;
+      if(opts.title !== undefined) el.title = opts.title;
+      if(opts.placeholder !== undefined) el.placeholder = opts.placeholder;
+    }
+
+    // Toolbar buttons
+    ['btnUndo','btnRedo','btnAddBox','btnAddHeader','btnConnect','btnDuplicate',
+     'btnDelete','btnSupport','btnMore','btnLang',
+     'btnZoomOut','btnZoomIn','btnZoomReset'].forEach(function(id){
+      var el = document.getElementById(id);
+      if(!el || !t[id]) return;
+      if(t[id].text !== undefined) el.textContent = t[id].text;
+      if(t[id].title !== undefined) el.title = t[id].title;
+    });
+
+    // Menu items (textContent only)
+    ['btnExportPng','btnExport','btnImport','btnShare','btnNewPage','btnClearCache',
+     'epBtnAddChip','epBtnSetHeader','epCancel','epSave','stashAdd',
+     'pngCancel','pngGo','supThank','supLater'].forEach(function(id){
+      setEl(id, t[id]||{});
+    });
+
+    // Inputs / placeholders
+    setEl('boxSearchInput', t.boxSearchInput||{});
+    setEl('epTextarea', t.epTextarea||{});
+    setEl('stashText', t.stashText||{});
+
+    // Misc elements
+    setEl('epLabel', t.epLabel||{});
+    setEl('hintShow', t.hintShow||{});
+    setEl('hintToggle', t.hintToggle||{});
+    setEl('hintText', t.hintText||{});
+    setEl('stashDropZone', t.stashDropZone||{});
+    setEl('stashBtn', t.stashBtn||{});
+    setEl('mobileConnectHint', t.mobileConnectHint||{});
+    setEl('supTitle', t.supTitle||{});
+    setEl('supSub', t.supSub||{});
+
+    // Stash panel header span
+    var spHeaderSpan = document.querySelector('#stashPanel .spHeader span');
+    if(spHeaderSpan && t.stashPanelTitle) spHeaderSpan.textContent = t.stashPanelTitle.text;
+
+    // PNG Dialog
+    var pdTitle = document.querySelector('#pngDialog .pd-title');
+    if(pdTitle && t.pngDialogTitle) pdTitle.textContent = t.pngDialogTitle.text;
+    var pdSub = document.querySelector('#pngDialog .pd-sub');
+    if(pdSub && t.pngDialogSub) pdSub.textContent = t.pngDialogSub.text;
+
+    // Mobile bottom bar labels
+    ['mbAdd','mbConnect','mbDelete','mbStash','mbMore'].forEach(function(id){
+      if(!t[id]) return;
+      var btn = document.getElementById(id);
+      if(!btn) return;
+      var span = btn.querySelector('span:last-child');
+      if(span) span.textContent = t[id].label;
+    });
+
+    // FAB items (text node after .fi span)
+    ['fUndo','fRedo','fAddHeader','fDuplicate','fExport','fImport','fShare','fClear','fNewPage','fReset'].forEach(function(id){
+      if(!t[id]) return;
+      var el = document.getElementById(id);
+      if(!el) return;
+      // Replace text nodes (keep .fi span)
+      var fi = el.querySelector('.fi');
+      // Clear and rebuild
+      while(el.lastChild && el.lastChild !== fi) el.removeChild(el.lastChild);
+      if(!fi) { el.textContent = t[id].text; }
+      else { el.appendChild(document.createTextNode(t[id].text)); }
+    });
+
+    // html lang attribute
+    document.documentElement.lang = lang;
+  }
+
+  function toggleLang() {
+    currentLang = (currentLang === 'th') ? 'en' : 'th';
+    localStorage.setItem(LANG_KEY, currentLang);
+    applyLang(currentLang);
+  }
+
+  // Wait for DOM then wire up button
+  function init() {
+    var btn = document.getElementById('btnLang');
+    if(btn) btn.addEventListener('click', toggleLang);
+    // Apply saved language on load (if EN; TH is default HTML)
+    if(currentLang === 'en') applyLang('en');
+  }
+
+  if(document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
 })();
 </script>
 </body>
