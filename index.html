@@ -412,10 +412,11 @@
     try{
       const raw=localStorage.getItem(CACHE_KEY);if(!raw) return false;
       const data=JSON.parse(raw);
+      clearTimeout(saveTimer);
       boxes.forEach(b=>b.el.remove());boxes=[];conns=[];
       const idMap={};
       data.boxes.forEach(bd=>{const nb=addBox(bd.x,bd.y,bd.text,bd.isHeader,bd.chips||[],bd.fixedW||null,bd.fixedH||null,bd.headerText||'',bd.image||null);idMap[bd.id]=nb.id;});
-      conns=data.conns.map(c=>({from:idMap[c.from],to:idMap[c.to],fromSide:c.fromSide||'bottom',toSide:c.toSide||'top'}));
+      conns=(data.conns||[]).map(c=>({from:idMap[c.from],to:idMap[c.to],fromSide:c.fromSide||'bottom',toSide:c.toSide||'top'})).filter(c=>c.from&&c.to);
       if(data.scale) scale=data.scale;
       if(data.panX!==undefined) panX=data.panX;
       if(data.panY!==undefined) panY=data.panY;
@@ -456,10 +457,11 @@
     return {boxes:boxes.map(b=>({id:b.id,x:b.x,y:b.y,text:b.titleEl.innerText,isHeader:b.isHeader,chips:b.chips,fixedW:b.fixedW,fixedH:b.fixedH,headerText:b.headerText||'',image:b.image||null})),conns,panX,panY,scale};
   }
   function loadSaveData(data){
+    clearTimeout(saveTimer);
     boxes.forEach(b=>b.el.remove());boxes=[];conns=[];
     const idMap={};
     data.boxes.forEach(bd=>{const nb=addBox(bd.x,bd.y,bd.text,bd.isHeader,bd.chips||[],bd.fixedW||null,bd.fixedH||null,bd.headerText||'',bd.image||null);idMap[bd.id]=nb.id;});
-    conns=(data.conns||[]).map(c=>({from:idMap[c.from],to:idMap[c.to],fromSide:c.fromSide||'bottom',toSide:c.toSide||'top'}));
+    conns=(data.conns||[]).map(c=>({from:idMap[c.from],to:idMap[c.to],fromSide:c.fromSide||'bottom',toSide:c.toSide||'top'})).filter(c=>c.from&&c.to);
     if(data.scale) scale=data.scale;
     if(data.panX!==undefined) panX=data.panX;
     if(data.panY!==undefined) panY=data.panY;
@@ -614,7 +616,7 @@
     const mx=e.clientX-rect.left,my=e.clientY-rect.top;
     const wx=(mx-panX)/scale,wy=(my-panY)/scale;
     const d=e.deltaY<0?1.1:1/1.1;
-    scale=Math.min(Math.max(scale*d,0.1),6);
+    scale=Math.min(Math.max(scale*d,0.02),20);
     panX=mx-wx*scale;panY=my-wy*scale;applyTransform();
   },{passive:false});
   document.getElementById('btnZoomIn').onclick=()=>zoomBy(1.2);
@@ -624,7 +626,7 @@
     const rect=wrap.getBoundingClientRect();
     const mx=rect.width/2,my=rect.height/2;
     const wx=(mx-panX)/scale,wy=(my-panY)/scale;
-    scale=Math.min(Math.max(scale*f,0.1),6);
+    scale=Math.min(Math.max(scale*f,0.02),20);
     panX=mx-wx*scale;panY=my-wy*scale;applyTransform();
   }
   let panning=false,panStart=null;
@@ -739,16 +741,19 @@
   wrap.addEventListener('dblclick',e=>{
     if(e.target===wrap||e.target===world||e.target===svg){
       const rect=wrap.getBoundingClientRect();
-      addBox((e.clientX-rect.left-panX)/scale-60,(e.clientY-rect.top-panY)/scale-20,'กล่องใหม่',false);
+      const nb=addBox((e.clientX-rect.left-panX)/scale-60,(e.clientY-rect.top-panY)/scale-20,'กล่องใหม่',false);
+      applyTransform();
     }
   });
   document.getElementById('btnAddBox').onclick=()=>{
     const rect=wrap.getBoundingClientRect();
-    addBox((rect.width/2-panX)/scale-60,(rect.height/2-panY)/scale-20,'กล่องใหม่',false);
+    const nb=addBox((rect.width/2-panX)/scale-60,(rect.height/2-panY)/scale-20,'กล่องใหม่',false);
+    applyTransform();
   };
   document.getElementById('btnAddHeader').onclick=()=>{
     const rect=wrap.getBoundingClientRect();
-    addBox((rect.width/2-panX)/scale-60,(50-panY)/scale-20,'หัวข้อใหม่',true);
+    const nb=addBox((rect.width/2-panX)/scale-60,(50-panY)/scale-20,'หัวข้อใหม่',true);
+    applyTransform();
   };
 
   function addBox(x,y,text,isHeader,chips=[],initFixedW=null,initFixedH=null,headerText='',initImage=null){
@@ -952,7 +957,7 @@
       if(selectedBoxes.has(box)&&selectedBoxes.size>1) return;
       selectBox(box);
     });
-    applyTransform();return box;
+    return box;
   }
 
   let chipIdCounter=1,chipDrag=null,chipGhost=null;
@@ -1107,7 +1112,7 @@
   document.getElementById('btnDuplicate').onclick=()=>{
     if(!selectedBox) return;
     const nb=addBox(selectedBox.x+30,selectedBox.y+30,selectedBox.titleEl.innerText,selectedBox.isHeader,selectedBox.chips.map(c=>({text:c.text})),selectedBox.fixedW,selectedBox.fixedH);
-    selectBox(nb);
+    selectBox(nb);applyTransform();
   };
   window.addEventListener('keydown',e=>{
     if(e.key==='Escape') cancelConnect();
@@ -1134,24 +1139,38 @@
       });
       redrawLines();
     }
-    // กด 3 → Auto-layout: จัดทุกกล่องเป็น tree สวยงามอัตโนมัติ (toggle down/right)
+    // กด 3 → Auto-layout: จัดกล่องที่เลือกไว้ (ถ้าไม่มีที่เลือก = จัดทั้งหมด) toggle down/right
     if(!editing&&(e.key==='3'||e.code==='Digit3')){
       e.preventDefault();
       if(boxes.length===0) return;
       layoutDir = (layoutDir === 'down') ? 'right' : 'down';
-      const H_GAP=50;   // ช่องว่างแนวนอนระหว่าง subtree
-      const V_GAP=80;   // ช่องว่างแนวตั้งระหว่าง layer
+      const H_GAP=50;
+      const V_GAP=80;
 
-      // --- หา connected components (undirected) ---
+      // กล่องที่จะ layout: ถ้ามี multi-select ใช้เฉพาะนั้น, ถ้ามี single select ใช้ตัวนั้น, ถ้าไม่มีใช้ทั้งหมด
+      const targetBoxes = selectedBoxes.size>1 ? Array.from(selectedBoxes)
+                        : selectedBox ? [selectedBox]
+                        : boxes.slice();
+      if(targetBoxes.length===0) return;
+
+      // หา anchor point (top-left ของ bounding box กล่องที่เลือก) เพื่อ layout ณ ตำแหน่งเดิม
+      const anchorX = Math.min(...targetBoxes.map(b=>b.x));
+      const anchorY = Math.min(...targetBoxes.map(b=>b.y));
+
+      // เฉพาะ conns ระหว่างกล่องใน targetBoxes เท่านั้น
+      const targetIds = new Set(targetBoxes.map(b=>b.id));
+      const targetConns = conns.filter(c=>targetIds.has(c.from)&&targetIds.has(c.to));
+
+      // --- หา connected components (undirected) ภายใน targetBoxes ---
       const adjUnd=new Map();
-      boxes.forEach(b=>adjUnd.set(b.id,[]));
-      conns.forEach(c=>{
+      targetBoxes.forEach(b=>adjUnd.set(b.id,[]));
+      targetConns.forEach(c=>{
         if(adjUnd.has(c.from)) adjUnd.get(c.from).push(c.to);
         if(adjUnd.has(c.to))   adjUnd.get(c.to).push(c.from);
       });
       const compOf=new Map();
       let compCount=0;
-      boxes.forEach(b=>{
+      targetBoxes.forEach(b=>{
         if(compOf.has(b.id)) return;
         const q=[b.id]; compOf.set(b.id,compCount);
         let qi2=0;
@@ -1165,40 +1184,36 @@
       });
 
       const inDeg=new Map();
-      boxes.forEach(b=>inDeg.set(b.id,0));
-      conns.forEach(c=>inDeg.set(c.to,(inDeg.get(c.to)||0)+1));
+      targetBoxes.forEach(b=>inDeg.set(b.id,0));
+      targetConns.forEach(c=>inDeg.set(c.to,(inDeg.get(c.to)||0)+1));
 
       const comps=[];
       for(let i=0;i<compCount;i++) comps.push([]);
-      boxes.forEach(b=>comps[compOf.get(b.id)].push(b));
+      targetBoxes.forEach(b=>comps[compOf.get(b.id)].push(b));
 
-      // depthOf และ parentIdOf สำหรับใช้ assign sides
       const depthOf=new Map();
-      const parentIdOf=new Map(); // childId → parentId (ใน tree ที่ layout)
+      const parentIdOf=new Map();
 
       function layoutComp(compBoxes, offsetX){
-        // หา root: in-degree 0 ภายใน component
         let root=compBoxes.find(b=>inDeg.get(b.id)===0);
         if(!root){
-          // cycle → เลือกตัวที่ out-degree มากสุด
           let best=compBoxes[0], bestOut=0;
           compBoxes.forEach(b=>{
-            const out=conns.filter(c=>c.from===b.id&&compBoxes.some(cb=>cb.id===c.to)).length;
+            const out=targetConns.filter(c=>c.from===b.id&&compBoxes.some(cb=>cb.id===c.to)).length;
             if(out>bestOut){bestOut=out;best=b;}
           });
           root=best;
         }
 
-        // BFS directed สร้าง tree จริง (ไม่นับเส้นวนกลับ)
-        const children=new Map(); // id → [box]
+        const children=new Map();
         compBoxes.forEach(b=>children.set(b.id,[]));
         const vis=new Set([root.id]);
         depthOf.set(root.id,0);
         const q=[root]; let qi=0;
         while(qi<q.length){
           const cur=q[qi++];
-          conns.filter(c=>c.from===cur.id).forEach(c=>{
-            const child=boxes.find(b=>b.id===c.to);
+          targetConns.filter(c=>c.from===cur.id).forEach(c=>{
+            const child=targetBoxes.find(b=>b.id===c.to);
             if(!child||vis.has(child.id)) return;
             vis.add(child.id);
             depthOf.set(child.id,(depthOf.get(cur.id)||0)+1);
@@ -1211,16 +1226,12 @@
           if(!vis.has(b.id)){children.get(root.id).push(b);depthOf.set(b.id,1);}
         });
 
-        // Flatten chain: ถ้า root มีลูกเดียวและลูกนั้นมีพี่น้อง (sibling ใน connection เดิม)
-        // ให้ดึง grandchildren ที่เป็น chain ขึ้นมาเป็นพี่น้องกัน
         function flattenChain(parent){
           const ch=children.get(parent.id)||[];
-          // ถ้ามีลูกเดียวและลูกนั้นไม่มีลูก → chain ตรง ให้ดึงขึ้น
           if(ch.length===1){
             const onlyChild=ch[0];
             const grandCh=children.get(onlyChild.id)||[];
             if(grandCh.length>0){
-              // ดึง grandchildren ขึ้นมาเป็น siblings ของ onlyChild
               children.set(parent.id,[onlyChild,...grandCh]);
               children.set(onlyChild.id,[]);
               grandCh.forEach(gc=>{
@@ -1233,8 +1244,6 @@
         }
         flattenChain(root);
 
-        // คำนวณ subtree pixel-width (post-order)
-        // สำหรับ right layout: subW จริงๆ คือ subHeight
         const subW=new Map();
         function calcW(b){
           const ch=children.get(b.id)||[];
@@ -1252,22 +1261,18 @@
         }
         calcW(root);
 
-        // วาง X/Y (pre-order): กล่องอยู่กึ่งกลาง subtree ของตัวเอง
-        // ใช้ขนาดจริงจาก offsetWidth (ควร > 0 เพราะกล่องมีอยู่แล้ว)
         function place(b,sx,depth){
           const sw=subW.get(b.id);
-          if(layoutDir === 'right'){
-            // left-to-right: depth = X axis, sx = Y start
+          if(layoutDir==='right'){
             const bh=Math.max(b.el.offsetHeight,50);
             const rowW=Math.max(...compBoxes.map(bb=>bb.el.offsetWidth||120));
-            b.y=offsetX+sx+sw/2-bh/2;
-            b.x=depth*(rowW+V_GAP)+40;
+            b.y=anchorY+offsetX+sx+sw/2-bh/2;
+            b.x=anchorX+depth*(rowW+V_GAP);
           } else {
-            // top-to-bottom (default)
             const bw=Math.max(b.el.offsetWidth,120);
             const rowH=Math.max(...compBoxes.map(bb=>bb.el.offsetHeight||50));
-            b.x=offsetX+sx+sw/2-bw/2;
-            b.y=depth*(rowH+V_GAP)+40;
+            b.x=anchorX+offsetX+sx+sw/2-bw/2;
+            b.y=anchorY+depth*(rowH+V_GAP);
           }
           b.el.style.left=b.x+'px';
           b.el.style.top=b.y+'px';
@@ -1282,18 +1287,16 @@
         return subW.get(root.id);
       }
 
-      let ox=40;
+      let ox=0;
       comps.forEach(compBoxes=>{
         const w=layoutComp(compBoxes,ox);
-        if(layoutDir==='right') ox+=w+H_GAP*3;
-        else ox+=w+H_GAP*3;
+        ox+=w+H_GAP*3;
       });
 
-      // assign fromSide/toSide: parent→child = bottom→top (down) หรือ right→left (right)
-      conns.forEach(c=>{
-        const fb=boxes.find(b=>b.id===c.from),tb=boxes.find(b=>b.id===c.to);
+      // assign fromSide/toSide เฉพาะ conns ใน targetBoxes
+      targetConns.forEach(c=>{
+        const fb=targetBoxes.find(b=>b.id===c.from),tb=targetBoxes.find(b=>b.id===c.to);
         if(!fb||!tb) return;
-        // ถ้า fb คือ parent ของ tb ใน tree
         if(parentIdOf.get(tb.id)===fb.id){
           if(layoutDir==='right'){c.fromSide='right'; c.toSide='left';}
           else{c.fromSide='bottom'; c.toSide='top';}
@@ -1301,7 +1304,6 @@
           if(layoutDir==='right'){c.fromSide='left'; c.toSide='right';}
           else{c.fromSide='top'; c.toSide='bottom';}
         } else {
-          // เส้นข้าม level หรือ sibling
           const fd=depthOf.get(fb.id)??0, td=depthOf.get(tb.id)??0;
           if(layoutDir==='right'){
             if(td>fd){c.fromSide='right';c.toSide='left';}
@@ -1344,7 +1346,7 @@
       e.preventDefault();
       const nb=addBox(clipboardBox.x+30,clipboardBox.y+30,clipboardBox.text,clipboardBox.isHeader,clipboardBox.chips,clipboardBox.fixedW,clipboardBox.fixedH,'',clipboardBox.image||null);
       clipboardBox.x+=30;clipboardBox.y+=30;
-      selectBox(nb);
+      selectBox(nb);applyTransform();
     }
   });
   function redrawLines(){
@@ -1402,11 +1404,12 @@
     reader.onload=()=>{
       try{
         const data=JSON.parse(reader.result);
+        clearTimeout(saveTimer);
         boxes.forEach(b=>b.el.remove());boxes=[];conns=[];
         const idMap={};
         data.boxes.forEach(bd=>{const nb=addBox(bd.x,bd.y,bd.text,bd.isHeader,bd.chips||[],bd.fixedW||null,bd.fixedH||null,bd.headerText||'',bd.image||null);idMap[bd.id]=nb.id;});
-        conns=data.conns.map(c=>({from:idMap[c.from],to:idMap[c.to],fromSide:c.fromSide||'bottom',toSide:c.toSide||'top'}));
-        redrawLines();
+        conns=(data.conns||[]).map(c=>({from:idMap[c.from],to:idMap[c.to],fromSide:c.fromSide||'bottom',toSide:c.toSide||'top'})).filter(c=>c.from&&c.to);
+        redrawLines();applyTransform();saveToCache();
       }catch(err){alert('ไฟล์ไม่ถูกต้อง: '+err.message);}
     };
     reader.readAsText(file);
