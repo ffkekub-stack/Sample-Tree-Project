@@ -100,7 +100,13 @@
   .anchor.left{left:-7px;top:50%;transform:translateY(-50%);cursor:crosshair;}
   .anchor.right{right:-7px;top:50%;transform:translateY(-50%);cursor:crosshair;}
   .box.connect-source{outline:3px dashed var(--accent);}
-  #hint{position:fixed;bottom:10px;left:14px;color:#7b879c;font-size:12px;background:rgba(20,25,35,.7);padding:6px 10px;border-radius:6px;z-index:100;max-width:72%;line-height:1.6;}
+  #hint{position:fixed;bottom:10px;left:14px;color:#7b879c;font-size:12px;background:rgba(20,25,35,.7);padding:6px 30px 6px 10px;border-radius:6px;z-index:100;max-width:72%;line-height:1.6;}
+  #hint.hidden{display:none;}
+  #hintToggle{position:absolute;top:4px;right:4px;width:20px;height:20px;border:none;border-radius:5px;background:rgba(255,255,255,.08);color:#aab4c8;font-size:12px;line-height:1;cursor:pointer;padding:0;display:flex;align-items:center;justify-content:center;}
+  #hintToggle:hover{background:rgba(255,255,255,.18);color:#fff;}
+  #hintShow{position:fixed;bottom:10px;left:14px;z-index:100;display:none;background:rgba(20,25,35,.7);color:#9fb4e6;border:1px solid #3a4358;border-radius:6px;padding:6px 11px;font-size:12px;cursor:pointer;}
+  #hintShow:hover{background:rgba(40,50,70,.9);color:#cfd8ec;}
+  #hintShow.show{display:block;}
   #editPanel{position:fixed;left:0;right:0;bottom:0;height:0;background:var(--panel);border-top:2px solid var(--accent);box-shadow:0 -6px 24px rgba(0,0,0,.5);z-index:200;display:flex;flex-direction:column;overflow:hidden;transition:height .18s ease;}
   #editPanel.open{height:42vh;min-height:260px;}
   #editPanel .epHeader{display:flex;align-items:center;justify-content:space-between;padding:12px 18px;border-bottom:1px solid #2f3850;}
@@ -170,6 +176,7 @@
   .bsr-item.drop-done{animation:bsrDropDone .7s ease;}
   @keyframes bsrDropDone{0%{background:rgba(76,217,100,.55);}100%{background:transparent;}}
   .bsr-name{color:#dfe6f5;font-size:13px;font-weight:600;display:flex;align-items:center;gap:6px;}
+  .bsr-path{color:#6f7c93;font-size:10.5px;font-weight:500;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:300px;}
   .bsr-name .bsr-tag{font-size:10px;font-weight:600;color:var(--accent);background:rgba(91,141,239,.15);padding:1px 6px;border-radius:6px;}
   .bsr-preview{color:#8b95a8;font-size:11px;margin-top:3px;line-height:1.45;}
   .bsr-preview mark{background:rgba(91,141,239,.3);color:#dfe6f5;border-radius:3px;padding:0 2px;}
@@ -221,6 +228,7 @@
   /* ===== MOBILE STYLES ===== */
   @media (max-width: 767px) {
     #hint { display: none !important; }
+    #hintShow { display: none !important; }
     #toolbar { display: none !important; }
     #stashBtn, #stashBadge { display: none !important; }
 
@@ -483,6 +491,8 @@
   <div id="selectRect"></div>
 </div>
 <div id="hint">
+  <button id="hintToggle" title="ซ่อนคำแนะนำ">✕</button>
+  <div id="hintText">
   ดับเบิลคลิกพื้นว่าง = เพิ่มกล่อง &nbsp;•&nbsp;
   ดับเบิลคลิกชื่อกล่อง = แก้ไข &nbsp;•&nbsp;
   กด <strong style="color:#5b8def;">Shift+Enter</strong> = เพิ่มไอเท็มในกล่อง &nbsp;•&nbsp;
@@ -493,7 +503,9 @@
   <strong style="color:#5b8def;">ลากขอบล่าง</strong> = กำหนดความสูง &nbsp;•&nbsp;
   กด <strong style="color:#5b8def;">Ctrl+Z</strong> = เลิกทำ &nbsp;•&nbsp;
   กด <strong style="color:#5b8def;">Ctrl+Y</strong> = ทำซ้ำ
+  </div>
 </div>
+<button id="hintShow" title="แสดงคำแนะนำ">❔ คำแนะนำ</button>
 <div id="editOverlay"></div>
 <div id="editPanel">
   <div class="epHeader"><span id="epLabel">แก้ไขข้อความ</span></div>
@@ -2480,6 +2492,23 @@
       const t=(b.titleEl.innerText||'').trim();
       return t||(b.isHeader?'(หัวข้อไม่มีชื่อ)':'(กล่องไม่มีชื่อ)');
     }
+    // Walk up the connection graph to build the ancestor path (root first), excluding the box itself.
+    function getBoxPath(box){
+      const path=[];
+      const seen=new Set([box.id]);
+      let cur=box;
+      let guard=0;
+      while(guard++<30){
+        const parentConn=conns.find(c=>c.to===cur.id && !seen.has(c.from));
+        if(!parentConn) break;
+        const parent=boxes.find(b=>b.id===parentConn.from);
+        if(!parent) break;
+        seen.add(parent.id);
+        path.unshift(boxName(parent));
+        cur=parent;
+      }
+      return path; // e.g. ['Body Part','Human Part']
+    }
     function search(q){
       q=q.trim();
       const ql=q.toLowerCase();
@@ -2504,6 +2533,13 @@
       }
       current.forEach((m,i)=>{
         const item=document.createElement('div');item.className='bsr-item';item.dataset.idx=i;
+        const path=getBoxPath(m.box);
+        if(path.length){
+          const pc=document.createElement('div');pc.className='bsr-path';
+          pc.textContent=path.join(' › ')+' ›';
+          pc.title=path.join(' › ');
+          item.appendChild(pc);
+        }
         const name=document.createElement('div');name.className='bsr-name';
         name.innerHTML=hl(m.name,q);
         if(m.box.isHeader){const tag=document.createElement('span');tag.className='bsr-tag';tag.textContent='หัวข้อ';name.appendChild(tag);}
@@ -2566,6 +2602,25 @@
     panY=rect.height/2 - cy*scale;
     applyTransform();schedSave();
   }
+
+  // ===== HINT BAR SHOW/HIDE =====
+  (function(){
+    const hint=document.getElementById('hint');
+    const toggle=document.getElementById('hintToggle');
+    const show=document.getElementById('hintShow');
+    if(!hint||!toggle||!show) return;
+    const KEY='orgchart_hint_hidden';
+    function setHidden(hidden){
+      hint.classList.toggle('hidden',hidden);
+      show.classList.toggle('show',hidden);
+      try{localStorage.setItem(KEY,hidden?'1':'0');}catch(e){}
+    }
+    toggle.addEventListener('click',()=>setHidden(true));
+    show.addEventListener('click',()=>setHidden(false));
+    let init=false;
+    try{init=localStorage.getItem(KEY)==='1';}catch(e){}
+    if(init) setHidden(true);
+  })();
 
   loadStash();
 })();
