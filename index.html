@@ -972,6 +972,23 @@
       else if(selectedBox) deleteBox(selectedBox);
       else if(selectedConn) deleteConn(selectedConn);
     }
+    if(!editing&&e.key==='1'&&selectedBoxes.size>1){
+      e.preventDefault();
+      const list=Array.from(selectedBoxes);
+      const refBox=(selectedBox&&selectedBoxes.has(selectedBox))?selectedBox:list[0];
+      const targetX=refBox.x;
+      list.forEach(b=>{
+        b.x=targetX;
+        b.el.style.left=b.x+'px';
+        boxes.forEach(child=>{
+          if(child.attachedTo===b){
+            child.x=b.x+child.attachmentOffset.x;
+            child.el.style.left=child.x+'px';
+          }
+        });
+      });
+      redrawLines();
+    }
     if(!editing&&(e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='c'&&selectedBox){
       e.preventDefault();
       clipboardBox={text:selectedBox.titleEl.innerText,isHeader:selectedBox.isHeader,chips:selectedBox.chips.map(c=>({text:c.text})),fixedW:selectedBox.fixedW,fixedH:selectedBox.fixedH,x:selectedBox.x,y:selectedBox.y};
