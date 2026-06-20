@@ -302,6 +302,7 @@
   <div class="sep"></div>
   <button id="btnExport">💾 บันทึก JSON</button>
   <button id="btnImport">📂 โหลด JSON</button>
+  <button id="btnShare">🔗 แชร์ลิงก์</button>
   <button id="btnClearCache">🗑️ ล้างแคช</button>
   <button id="btnNewPage">📄 หน้าใหม่</button>
   <input type="file" id="fileInput" accept=".json" style="display:none">
@@ -324,6 +325,7 @@
   <div class="fab-item" id="fDuplicate"><span class="fi">📋</span>คัดลอกกล่อง</div>
   <div class="fab-item" id="fExport"><span class="fi">💾</span>บันทึก JSON</div>
   <div class="fab-item" id="fImport"><span class="fi">📂</span>โหลด JSON</div>
+  <div class="fab-item" id="fShare"><span class="fi">🔗</span>แชร์ลิงก์</div>
   <div class="fab-item" id="fClear"><span class="fi">🗑️</span>ล้างข้อมูล</div>
   <div class="fab-item" id="fNewPage"><span class="fi">📄</span>หน้าใหม่</div>
   <div class="fab-item" id="fReset"><span class="fi">🔄</span>รีเซ็ตมุมมอง</div>
@@ -412,6 +414,82 @@
       redrawLines();applyTransform();
       return true;
     }catch(e){return false;}
+  }
+
+  function abToBase64url(buf){
+    let binary='';const bytes=new Uint8Array(buf);
+    for(let i=0;i<bytes.length;i++) binary+=String.fromCharCode(bytes[i]);
+    return btoa(binary).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+  }
+  function base64urlToAb(b64){
+    b64=b64.replace(/-/g,'+').replace(/_/g,'/');
+    while(b64.length%4) b64+='=';
+    const binary=atob(b64);
+    const bytes=new Uint8Array(binary.length);
+    for(let i=0;i<binary.length;i++) bytes[i]=binary.charCodeAt(i);
+    return bytes.buffer;
+  }
+  async function compressToParam(str){
+    const cs=new CompressionStream('gzip');
+    const writer=cs.writable.getWriter();
+    writer.write(new TextEncoder().encode(str));writer.close();
+    const buf=await new Response(cs.readable).arrayBuffer();
+    return abToBase64url(buf);
+  }
+  async function decompressFromParam(param){
+    const ab=base64urlToAb(param);
+    const ds=new DecompressionStream('gzip');
+    const writer=ds.writable.getWriter();
+    writer.write(new Uint8Array(ab));writer.close();
+    const out=await new Response(ds.readable).arrayBuffer();
+    return new TextDecoder().decode(out);
+  }
+  function getCurrentSaveData(){
+    return {boxes:boxes.map(b=>({id:b.id,x:b.x,y:b.y,text:b.titleEl.innerText,isHeader:b.isHeader,chips:b.chips,fixedW:b.fixedW,fixedH:b.fixedH,headerText:b.headerText||''})),conns,panX,panY,scale};
+  }
+  function loadSaveData(data){
+    boxes.forEach(b=>b.el.remove());boxes=[];conns=[];
+    const idMap={};
+    data.boxes.forEach(bd=>{const nb=addBox(bd.x,bd.y,bd.text,bd.isHeader,bd.chips||[],bd.fixedW||null,bd.fixedH||null,bd.headerText||'');idMap[bd.id]=nb.id;});
+    conns=(data.conns||[]).map(c=>({from:idMap[c.from],to:idMap[c.to],fromSide:c.fromSide||'bottom',toSide:c.toSide||'top'}));
+    if(data.scale) scale=data.scale;
+    if(data.panX!==undefined) panX=data.panX;
+    if(data.panY!==undefined) panY=data.panY;
+    redrawLines();applyTransform();
+  }
+  document.getElementById('btnShare').onclick=async()=>{
+    try{
+      if(!window.CompressionStream){alert('เบราว์เซอร์นี้ไม่รองรับการสร้างลิงก์แชร์ ลองใช้ Chrome/Edge/Safari รุ่นใหม่');return;}
+      const json=JSON.stringify(getCurrentSaveData());
+      const param=await compressToParam(json);
+      const url=location.origin+location.pathname+'#share='+param;
+      if(url.length>60000){
+        alert('แผนภาพมีขนาดใหญ่เกินไปสำหรับลิงก์ ลองลบไอเทมที่ไม่ใช้ หรือใช้ "บันทึก JSON" แทน');
+        return;
+      }
+      try{
+        await navigator.clipboard.writeText(url);
+        saveStatus.textContent='✓ คัดลอกลิงก์แชร์แล้ว';saveStatus.style.opacity=1;
+        clearTimeout(saveTimer);saveTimer=setTimeout(()=>{saveStatus.style.opacity=0;},2500);
+      }catch(e){
+        prompt('คัดลอกลิงก์นี้ไปแชร์ได้เลย:',url);
+      }
+    }catch(e){alert('สร้างลิงก์ไม่สำเร็จ: '+e.message);}
+  };
+  async function loadFromShareHash(){
+    if(!location.hash.startsWith('#share=')) return false;
+    try{
+      const param=location.hash.slice(7);
+      const json=await decompressFromParam(param);
+      const data=JSON.parse(json);
+      loadSaveData(data);
+      history.replaceState(null,'',location.pathname+location.search);
+      saveToCache();
+      return true;
+    }catch(e){
+      alert('ลิงก์ที่เปิดไม่ถูกต้องหรือเสียหาย');
+      return false;
+    }
   }
 
   document.getElementById('btnClearCache').onclick=()=>{
@@ -543,6 +621,7 @@
   }
   let panning=false,panStart=null;
   let selectedBoxes=new Set();
+  window.addEventListener('keydown',e=>{if(e.key==='Alt') e.preventDefault();});
   let rubberSelecting=false,rubberStart=null;
   const selectRectEl=document.getElementById('selectRect');
   function clearMultiSelection(){
@@ -972,7 +1051,7 @@
       else if(selectedBox) deleteBox(selectedBox);
       else if(selectedConn) deleteConn(selectedConn);
     }
-    if(!editing&&e.key==='1'&&selectedBoxes.size>1){
+    if(!editing&&(e.key==='1'||e.code==='Digit1')&&selectedBoxes.size>1){
       e.preventDefault();
       const list=Array.from(selectedBoxes);
       const refBox=(selectedBox&&selectedBoxes.has(selectedBox))?selectedBox:list[0];
@@ -984,6 +1063,23 @@
           if(child.attachedTo===b){
             child.x=b.x+child.attachmentOffset.x;
             child.el.style.left=child.x+'px';
+          }
+        });
+      });
+      redrawLines();
+    }
+    if(!editing&&(e.key==='2'||e.code==='Digit2')&&selectedBoxes.size>1){
+      e.preventDefault();
+      const list=Array.from(selectedBoxes);
+      const refBox=(selectedBox&&selectedBoxes.has(selectedBox))?selectedBox:list[0];
+      const targetY=refBox.y;
+      list.forEach(b=>{
+        b.y=targetY;
+        b.el.style.top=b.y+'px';
+        boxes.forEach(child=>{
+          if(child.attachedTo===b){
+            child.y=b.y+child.attachmentOffset.y;
+            child.el.style.top=child.y+'px';
           }
         });
       });
@@ -1064,13 +1160,16 @@
     };
     reader.readAsText(file);
   };
-  if(!loadFromCache()){
-    const h1=addBox(320,20,'แผนกองค์กร',true);
-    const n1=addBox(180,130,'สัตว์',false,[{id:'c1',text:'หมา'},{id:'c2',text:'แมว'},{id:'c3',text:'นก'}]);
-    const n2=addBox(480,130,'ผลไม้',false,[{id:'c4',text:'แอปเปิ้ล'},{id:'c5',text:'มะม่วง'}]);
-    conns.push({from:n1.id,to:n2.id,fromSide:'right',toSide:'left'});
-    applyTransform();
-  }
+  (async function initLoad(){
+    const loadedFromShare=await loadFromShareHash();
+    if(!loadedFromShare && !loadFromCache()){
+      const h1=addBox(320,20,'แผนกองค์กร',true);
+      const n1=addBox(180,130,'สัตว์',false,[{id:'c1',text:'หมา'},{id:'c2',text:'แมว'},{id:'c3',text:'นก'}]);
+      const n2=addBox(480,130,'ผลไม้',false,[{id:'c4',text:'แอปเปิ้ล'},{id:'c5',text:'มะม่วง'}]);
+      conns.push({from:n1.id,to:n2.id,fromSide:'right',toSide:'left'});
+      applyTransform();
+    }
+  })();
   // ===== STASH PANEL =====
   const stashBtn=document.getElementById('stashBtn');
   const stashPanel=document.getElementById('stashPanel');
@@ -1271,6 +1370,7 @@
   fabProxy('fDuplicate','btnDuplicate');
   fabProxy('fExport','btnExport');
   fabProxy('fImport','btnImport');
+  fabProxy('fShare','btnShare');
   fabProxy('fClear','btnClearCache');
   fabProxy('fNewPage','btnNewPage');
   fabProxy('fReset','btnZoomReset');
