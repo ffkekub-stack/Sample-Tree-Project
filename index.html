@@ -528,7 +528,7 @@
   <div class="fab-item" id="fExport"><span class="fi">💾</span>บันทึก JSON</div>
   <div class="fab-item" id="fImport"><span class="fi">📂</span>โหลด JSON</div>
   <div class="fab-item" id="fShare"><span class="fi">🔗</span>แชร์ลิงก์</div>
-  <div class="fab-item" id="fNewPage"><span class="fi">📄</span>หน้าใหม่</div>
+  <div class="fab-item" id="fNewPage"><span class="fi">🗑️</span>ล้างแคช</div>
   <div class="fab-item" id="fReset"><span class="fi">🔄</span>รีเซ็ตมุมมอง</div>
 </div>
 <div id="fabBackdrop"></div>
@@ -2926,6 +2926,31 @@ var qrcode = function() {
 
 </script>
 
+<!-- CLEAR CACHE DIALOG (mobile) -->
+<div id="clearCacheOverlay" style="position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:530;display:none;align-items:center;justify-content:center;">
+  <div style="background:var(--panel);border:1px solid #3a4358;border-radius:16px;box-shadow:0 18px 52px rgba(0,0,0,.6);padding:24px;width:320px;max-width:92vw;">
+    <div style="color:#ff7a7a;font-size:17px;font-weight:700;margin-bottom:8px;">🗑️ ล้างแคช</div>
+    <div style="color:#8b95a8;font-size:13px;line-height:1.5;margin-bottom:20px;">ล้างข้อมูลที่บันทึกไว้ทั้งหมดใช่ไหม? การกระทำนี้ไม่สามารถย้อนกลับได้</div>
+    <div style="display:flex;gap:10px;justify-content:flex-end;">
+      <button id="ccCancel" style="border:none;border-radius:9px;padding:10px 18px;font-size:14px;cursor:pointer;background:#2a3242;color:#cfd8ec;">ยกเลิก</button>
+      <button id="ccConfirm" style="border:none;border-radius:9px;padding:10px 18px;font-size:14px;cursor:pointer;background:#c0392b;color:#fff;font-weight:600;">ล้างข้อมูล</button>
+    </div>
+  </div>
+</div>
+
+<!-- NEW PAGE DIALOG -->
+<div id="newPageOverlay" style="position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:530;display:none;align-items:center;justify-content:center;">
+  <div style="background:var(--panel);border:1px solid #3a4358;border-radius:16px;box-shadow:0 18px 52px rgba(0,0,0,.6);padding:24px;width:340px;max-width:92vw;">
+    <div style="color:#eaf0fb;font-size:17px;font-weight:700;margin-bottom:8px;">📄 เปิดหน้าใหม่</div>
+    <div style="color:#8b95a8;font-size:13px;line-height:1.5;margin-bottom:20px;">เปิดหน้าว่างเปล่าใน tab ใหม่ใช่ไหม?</div>
+    <div style="display:flex;gap:10px;justify-content:flex-end;">
+      <button id="npCancel" style="border:none;border-radius:9px;padding:10px 18px;font-size:14px;cursor:pointer;background:#2a3242;color:#cfd8ec;">ยกเลิก</button>
+      <button id="npSave" style="border:none;border-radius:9px;padding:10px 18px;font-size:14px;cursor:pointer;background:#3a5f3a;color:#7eda7e;display:none;">💾 บันทึกก่อน</button>
+      <button id="npGo" style="border:none;border-radius:9px;padding:10px 18px;font-size:14px;cursor:pointer;background:var(--accent);color:#fff;font-weight:600;">เปิดหน้าใหม่</button>
+    </div>
+  </div>
+</div>
+
 <script>
 (function(){
   // ============================================================
@@ -3166,6 +3191,17 @@ var qrcode = function() {
       scale=1;panX=0;panY=0;applyTransform();
     }
   };
+  // clear cache dialog (mobile — ใช้แทน confirm() ที่ถูก block)
+  document.getElementById('ccCancel').onclick=()=>{
+    document.getElementById('clearCacheOverlay').style.display='none';
+  };
+  document.getElementById('ccConfirm').onclick=()=>{
+    document.getElementById('clearCacheOverlay').style.display='none';
+    pushHistory();
+    localStorage.removeItem(CACHE_KEY);
+    boxes.forEach(b=>b.el.remove());boxes=[];boxMap.clear();headerBoxes.clear();conns=[];clearFloatChips();
+    scale=1;panX=0;panY=0;applyTransform();
+  };
 
   // ===== TOOLBAR OVERFLOW MENU =====
   (function(){
@@ -3186,23 +3222,42 @@ var qrcode = function() {
 
   document.getElementById('btnNewPage').onclick=()=>{
     const hasSomething=boxes.length>0;
-    if(hasSomething){
-      const choice=confirm('บันทึกงานปัจจุบันก่อนเปิดหน้าใหม่ไหม?\n\nตกลง = บันทึกแล้วเปิดหน้าใหม่\nยกเลิก = เปิดหน้าใหม่เลย (ไม่บันทึก)');
-      if(choice){
-        saveToCache();
-      }
-    }
-    // เปิด tab ใหม่จากไฟล์ HTML เดิม (blob URL)
-    const html=document.documentElement.outerHTML;
-    // ล้าง localStorage key ใน tab ใหม่โดยใช้ key ต่างกัน
-    const newKey='orgchart_autosave_'+Date.now();
-    const newHtml=html.replace(
-      "const CACHE_KEY='orgchart_autosave'",
-      "const CACHE_KEY='"+newKey+"'"
-    );
-    const blob=new Blob([newHtml],{type:'text/html'});
-    window.open(URL.createObjectURL(blob),'_blank');
+    const overlay=document.getElementById('newPageOverlay');
+    const npSave=document.getElementById('npSave');
+    // แสดงปุ่ม "บันทึกก่อน" เฉพาะตอนมีกล่องอยู่
+    npSave.style.display=hasSomething?'':'none';
+    overlay.style.display='flex';
   };
+  // ปิด dialog
+  document.getElementById('npCancel').onclick=()=>{
+    document.getElementById('newPageOverlay').style.display='none';
+  };
+  // บันทึกแล้วเปิดหน้าใหม่
+  document.getElementById('npSave').onclick=()=>{
+    saveToCache();
+    document.getElementById('newPageOverlay').style.display='none';
+    doOpenNewPage();
+  };
+  // เปิดหน้าใหม่เลย
+  document.getElementById('npGo').onclick=()=>{
+    document.getElementById('newPageOverlay').style.display='none';
+    doOpenNewPage();
+  };
+
+  function doOpenNewPage(){
+    const clone=document.documentElement.cloneNode(true);
+    // ล้าง #world ใน clone
+    const w=clone.querySelector('#world');
+    if(w) w.innerHTML='<svg id="lines"></svg>';
+    // inject <script> ที่ set flag ก่อน script อื่นทั้งหมด
+    const flagScript=document.createElement('script');
+    flagScript.textContent='window.__OPEN_BLANK_PAGE__=true;';
+    const firstScript=clone.querySelector('script');
+    if(firstScript) firstScript.parentNode.insertBefore(flagScript,firstScript);
+    else clone.querySelector('head').appendChild(flagScript);
+    const blob=new Blob([new XMLSerializer().serializeToString(clone)],{type:'text/html'});
+    window.open(URL.createObjectURL(blob),'_blank');
+  }
 
 
   let dragBox=null,dragOffset={x:0,y:0},groupDrag=null;
@@ -4856,6 +4911,9 @@ var qrcode = function() {
   })();
 
   (async function initLoad(){
+    // เช็ค flag ที่ inject มาใน HTML — ใช้ได้แม้ blob URL (localStorage แยก origin)
+    const isBlank=window.__OPEN_BLANK_PAGE__===true;
+    if(isBlank){ applyTransform(); return; }
     const loadedFromShare=await loadFromShareHash();
     if(!loadedFromShare && !loadFromCache()){
       const h1=addBox(320,20,'แผนกองค์กร',true);
@@ -5242,6 +5300,17 @@ var qrcode = function() {
   fabProxy('fImport','btnImport');
   fabProxy('fShare','btnShare');
   fabProxy('fNewPage','btnNewPage');
+  // mobile: fNewPage ทำหน้าที่เป็น clear cache แทน (ไม่มีปุ่ม clear cache บน mobile)
+  (function(){
+    var el=document.getElementById('fNewPage');
+    if(!el) return;
+    // ถอด fabProxy เดิมออก แล้วใส่ handler ใหม่
+    el.replaceWith(el.cloneNode(true));
+    document.getElementById('fNewPage').addEventListener('click',function(){
+      closeFab();
+      document.getElementById('clearCacheOverlay').style.display='flex';
+    });
+  })();
   fabProxy('fReset','btnZoomReset');
 
   // Bottom bar more → FAB
