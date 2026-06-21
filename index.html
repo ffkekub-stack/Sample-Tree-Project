@@ -3,7 +3,13 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>Sample Tree</title>
+<title>จัดผังองค์กร แผนภูมิสายงาน ฟรี ไม่มีค่าใช้จ่าย | Sample Tree</title>
+<meta name="description" content="เครื่องมือจัดผังองค์กร แผนภูมิสายงาน จัดลำดับโครงสร้าง แบ่งสายงาน ใช้ฟรีทุกฟังก์ชัน ไม่ต้องสมัครสมาชิก ไม่มีค่าใช้จ่าย ใช้งานได้ทันทีบนมือถือและคอมพิวเตอร์">
+<meta name="keywords" content="จัดผังองค์กร,แผนภูมิสายงาน,org chart,mind map,จัดลำดับ,แบ่งสาย,ฟรี,ไม่มีค่าใช้จ่าย,โครงสร้างองค์กร,แผนผัง">
+<meta property="og:title" content="จัดผังองค์กร แผนภูมิสายงาน ฟรี | Sample Tree">
+<meta property="og:description" content="เครื่องมือจัดผังองค์กร แบ่งสายงาน จัดลำดับโครงสร้าง ใช้ฟรีทุกฟังก์ชัน ไม่ต้องสมัครสมาชิก">
+<meta property="og:type" content="website">
+<meta name="robots" content="index, follow">
 <style>
   :root{
     --bg:#11151c;--panel:#1b212c;--line:#5b8def;--box:#ffffff;
@@ -563,7 +569,12 @@
   <strong style="color:#5b8def;">ลากขอบขวา</strong> = กำหนดความกว้าง &nbsp;•&nbsp;
   <strong style="color:#5b8def;">ลากขอบล่าง</strong> = กำหนดความสูง &nbsp;•&nbsp;
   กด <strong style="color:#5b8def;">Ctrl+Z</strong> = เลิกทำ &nbsp;•&nbsp;
-  กด <strong style="color:#5b8def;">Ctrl+Y</strong> = ทำซ้ำ
+  กด <strong style="color:#5b8def;">Ctrl+Y</strong> = ทำซ้ำ &nbsp;•&nbsp;
+  <strong style="color:#5b8def;">Alt+ลากบนพื้นว่าง</strong> = ตีกรอบเลือกหลายกล่อง &nbsp;•&nbsp;
+  เลือกแล้ว <strong style="color:#5b8def;">ลากกล่องที่เลือก</strong> = ย้ายทั้งกลุ่ม &nbsp;•&nbsp;
+  เลือกหลายกล่องแล้วกด <strong style="color:#5b8def;">1</strong> = จัดชิดแนวตั้ง &nbsp;•&nbsp;
+  กด <strong style="color:#5b8def;">2</strong> = จัดชิดแนวนอน &nbsp;•&nbsp;
+  กด <strong style="color:#5b8def;">3</strong> = จัดผังอัตโนมัติ (สลับลง/ขวา)
   </div>
 </div>
 <button id="hintShow" title="แสดงคำแนะนำ">❔ คำแนะนำ</button>
@@ -5597,7 +5608,7 @@ var qrcode = function() {
       stashAdd:        { text:'เพิ่ม' },
       hintShow:        { text:'❔ คำแนะนำ' },
       hintToggle:      { title:'ซ่อนคำแนะนำ' },
-      hintText:        { html:'ดับเบิลคลิกพื้นว่าง = เพิ่มกล่อง &nbsp;•&nbsp; ดับเบิลคลิกชื่อกล่อง = แก้ไข &nbsp;•&nbsp; กด <strong style="color:#5b8def;">Shift+Enter</strong> = เพิ่มไอเท็มในกล่อง &nbsp;•&nbsp; กด <strong style="color:#5b8def;">Ctrl+Shift+Enter</strong> = สร้างหัวข้อด้านบน &nbsp;•&nbsp; ลากไอเท็ม = ย้ายไปกล่องอื่น &nbsp;•&nbsp; ลากกล่อง = ย้ายกล่อง &nbsp;•&nbsp; <strong style="color:#5b8def;">ลากขอบขวา</strong> = กำหนดความกว้าง &nbsp;•&nbsp; <strong style="color:#5b8def;">ลากขอบล่าง</strong> = กำหนดความสูง &nbsp;•&nbsp; กด <strong style="color:#5b8def;">Ctrl+Z</strong> = เลิกทำ &nbsp;•&nbsp; กด <strong style="color:#5b8def;">Ctrl+Y</strong> = ทำซ้ำ' },
+      hintText:        { html:'ดับเบิลคลิกพื้นว่าง = เพิ่มกล่อง &nbsp;•&nbsp; ดับเบิลคลิกชื่อกล่อง = แก้ไข &nbsp;•&nbsp; กด <strong style="color:#5b8def;">Shift+Enter</strong> = เพิ่มไอเท็มในกล่อง &nbsp;•&nbsp; กด <strong style="color:#5b8def;">Ctrl+Shift+Enter</strong> = สร้างหัวข้อด้านบน &nbsp;•&nbsp; ลากไอเท็ม = ย้ายไปกล่องอื่น &nbsp;•&nbsp; ลากกล่อง = ย้ายกล่อง &nbsp;•&nbsp; <strong style="color:#5b8def;">ลากขอบขวา</strong> = กำหนดความกว้าง &nbsp;•&nbsp; <strong style="color:#5b8def;">ลากขอบล่าง</strong> = กำหนดความสูง &nbsp;•&nbsp; กด <strong style="color:#5b8def;">Ctrl+Z</strong> = เลิกทำ &nbsp;•&nbsp; กด <strong style="color:#5b8def;">Ctrl+Y</strong> = ทำซ้ำ &nbsp;•&nbsp; <strong style="color:#5b8def;">Alt+ลากบนพื้นว่าง</strong> = ตีกรอบเลือกหลายกล่อง &nbsp;•&nbsp; เลือกแล้ว <strong style="color:#5b8def;">ลากกล่องที่เลือก</strong> = ย้ายทั้งกลุ่ม &nbsp;•&nbsp; เลือกหลายกล่องแล้วกด <strong style="color:#5b8def;">1</strong> = จัดชิดแนวตั้ง &nbsp;•&nbsp; กด <strong style="color:#5b8def;">2</strong> = จัดชิดแนวนอน &nbsp;•&nbsp; กด <strong style="color:#5b8def;">3</strong> = จัดผังอัตโนมัติ (สลับลง/ขวา)' },
       pngDialogTitle:  { text:'🖼️ บันทึกผังเป็นรูป PNG' },
       pngDialogSub:    { text:'พื้นหลังโปร่งใส • ครอบเฉพาะผังทั้งหมดอัตโนมัติ' },
       pngCancel:       { text:'ยกเลิก' },
@@ -5657,7 +5668,7 @@ var qrcode = function() {
       stashAdd:        { text:'Add' },
       hintShow:        { text:'❔ Tips' },
       hintToggle:      { title:'Hide tips' },
-      hintText:        { html:'Double-click canvas = Add box &nbsp;•&nbsp; Double-click box title = Edit &nbsp;•&nbsp; Press <strong style="color:#5b8def;">Shift+Enter</strong> = Add item to box &nbsp;•&nbsp; Press <strong style="color:#5b8def;">Ctrl+Shift+Enter</strong> = Create header above &nbsp;•&nbsp; Drag item = Move to another box &nbsp;•&nbsp; Drag box = Move box &nbsp;•&nbsp; <strong style="color:#5b8def;">Drag right edge</strong> = Set width &nbsp;•&nbsp; <strong style="color:#5b8def;">Drag bottom edge</strong> = Set height &nbsp;•&nbsp; Press <strong style="color:#5b8def;">Ctrl+Z</strong> = Undo &nbsp;•&nbsp; Press <strong style="color:#5b8def;">Ctrl+Y</strong> = Redo' },
+      hintText:        { html:'Double-click canvas = Add box &nbsp;•&nbsp; Double-click box title = Edit &nbsp;•&nbsp; Press <strong style="color:#5b8def;">Shift+Enter</strong> = Add item to box &nbsp;•&nbsp; Press <strong style="color:#5b8def;">Ctrl+Shift+Enter</strong> = Create header above &nbsp;•&nbsp; Drag item = Move to another box &nbsp;•&nbsp; Drag box = Move box &nbsp;•&nbsp; <strong style="color:#5b8def;">Drag right edge</strong> = Set width &nbsp;•&nbsp; <strong style="color:#5b8def;">Drag bottom edge</strong> = Set height &nbsp;•&nbsp; Press <strong style="color:#5b8def;">Ctrl+Z</strong> = Undo &nbsp;•&nbsp; Press <strong style="color:#5b8def;">Ctrl+Y</strong> = Redo &nbsp;•&nbsp; <strong style="color:#5b8def;">Alt+drag on canvas</strong> = Rubber-band select multiple boxes &nbsp;•&nbsp; Select then <strong style="color:#5b8def;">drag a selected box</strong> = Move group &nbsp;•&nbsp; Select multiple then press <strong style="color:#5b8def;">1</strong> = Align vertically &nbsp;•&nbsp; Press <strong style="color:#5b8def;">2</strong> = Align horizontally &nbsp;•&nbsp; Press <strong style="color:#5b8def;">3</strong> = Auto-layout (toggle down/right)' },
       pngDialogTitle:  { text:'🖼️ Export Diagram as PNG' },
       pngDialogSub:    { text:'Transparent background • Auto-fit to diagram' },
       pngCancel:       { text:'Cancel' },
