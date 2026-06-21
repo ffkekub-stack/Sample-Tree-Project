@@ -291,6 +291,9 @@
     .box:hover .anchor, .box.connect-armed .anchor { display: block; }
     /* anchor always show on mobile */
     .box .anchor { display: block !important; }
+    /* ปุ่มที่ปกติโผล่ตอน hover เท่านั้น (มือถือไม่มี hover) ให้โชว์ตลอด */
+    .box-img-upload { opacity: 1 !important; }
+    .box-collapse { display: flex !important; }
 
     #editPanel.open { height: 58vh !important; min-height: 300px !important; }
     #editPanel textarea { font-size: 16px !important; }
@@ -422,8 +425,23 @@
       text-align: center; padding: 3px 2px;
     }
 
+    /* ปุ่มเปลี่ยนภาษา อยู่ใต้ปุ่มซูม มุมบนขวา */
+    #mobileLangBtn {
+      display: flex !important;
+      position: fixed;
+      top: 148px; right: 12px;
+      z-index: 150;
+      width: 56px; height: 40px;
+      background: rgba(27,33,44,.9);
+      border: 1px solid #3a4358;
+      border-radius: 10px;
+      color: #fff; font-size: 13px; font-weight: 600;
+      align-items: center; justify-content: center;
+      cursor: pointer;
+    }
+
     /* Connect mode: show anchor explicitly */
-    #mobileConnectHint {
+    #mobileConnectHint, #mobileSelectHint {
       display: none;
       position: fixed;
       top: 12px; left: 50%;
@@ -436,12 +454,12 @@
       white-space: nowrap;
       pointer-events: none;
     }
-    #mobileConnectHint.show { display: block; }
+    #mobileConnectHint.show, #mobileSelectHint.show { display: block; }
   }
 
   /* Desktop: hide mobile elements */
   @media (min-width: 768px) {
-    #mobileBottomBar, #mobileFab, #mobileFabMenu, #mobileZoomCtrl, #fabBackdrop, #mobileConnectHint, #epMobileActions { display: none !important; }
+    #mobileBottomBar, #mobileFab, #mobileFabMenu, #mobileZoomCtrl, #mobileLangBtn, #fabBackdrop, #mobileConnectHint, #mobileSelectHint, #epMobileActions { display: none !important; }
   }
 </style>
 </head>
@@ -493,7 +511,7 @@
 <!-- Mobile Bottom Bar -->
 <div id="mobileBottomBar" style="display:none;">
   <button class="mb-btn" id="mbAdd"><span class="mb-icon">➕</span><span>เพิ่ม</span></button>
-  <button class="mb-btn" id="mbConnect"><span class="mb-icon">🔗</span><span>เชื่อม</span></button>
+  <button class="mb-btn" id="mbSelect"><span class="mb-icon">☑️</span><span>เลือก</span></button>
   <button class="mb-btn" id="mbDelete"><span class="mb-icon">🗑️</span><span>ลบ</span></button>
   <button class="mb-btn" id="mbStash"><span class="mb-icon">📦</span><span>พัก</span></button>
   <button class="mb-btn" id="mbMore"><span class="mb-icon">⋯</span><span>เพิ่มเติม</span></button>
@@ -506,14 +524,17 @@
   <div class="fab-item" id="fRedo"><span class="fi">↪️</span>ทำซ้ำ</div>
   <div class="fab-item" id="fAddHeader"><span class="fi">🏷️</span>เพิ่มหัวข้อ</div>
   <div class="fab-item" id="fDuplicate"><span class="fi">📋</span>คัดลอกกล่อง</div>
+  <div class="fab-item" id="fExportPng"><span class="fi">🖼️</span>บันทึกเป็นรูป PNG</div>
   <div class="fab-item" id="fExport"><span class="fi">💾</span>บันทึก JSON</div>
   <div class="fab-item" id="fImport"><span class="fi">📂</span>โหลด JSON</div>
   <div class="fab-item" id="fShare"><span class="fi">🔗</span>แชร์ลิงก์</div>
-  <div class="fab-item" id="fClear"><span class="fi">🗑️</span>ล้างข้อมูล</div>
   <div class="fab-item" id="fNewPage"><span class="fi">📄</span>หน้าใหม่</div>
   <div class="fab-item" id="fReset"><span class="fi">🔄</span>รีเซ็ตมุมมอง</div>
 </div>
 <div id="fabBackdrop"></div>
+
+<!-- Mobile Language Switch -->
+<button id="mobileLangBtn" style="display:none;" title="เปลี่ยนภาษา / Switch Language">🌐 EN</button>
 
 <!-- Mobile Zoom -->
 <div id="mobileZoomCtrl" style="display:none;">
@@ -524,6 +545,7 @@
 
 <!-- Mobile connect hint -->
 <div id="mobileConnectHint">🔗 แตะ anchor (จุดสีฟ้า) เพื่อเชื่อมต่อ — แตะ ✕ เพื่อยกเลิก</div>
+<div id="mobileSelectHint">☑️ ลากบนพื้นที่ว่างเพื่อเลือกหลายกล่อง — แตะปุ่ม "เลือก" อีกครั้งเพื่อปิด</div>
 
 <div id="canvasWrap">
   <div id="world"><svg id="lines"></svg></div>
@@ -3298,6 +3320,7 @@ var qrcode = function() {
   let selectedBoxes=new Set();
   window.addEventListener('keydown',e=>{if(e.key==='Alt') e.preventDefault();});
   let rubberSelecting=false,rubberStart=null;
+  window.multiSelectMode=false; // โหมดเลือกหลายกล่อง สำหรับมือถือ (แทน Alt+ลากบนคอม)
   const selectRectEl=document.getElementById('selectRect');
   function clearMultiSelection(){
     selectedBoxes.forEach(b=>b.el.classList.remove('multi-selected'));
@@ -3305,7 +3328,7 @@ var qrcode = function() {
   }
   wrap.addEventListener('mousedown',e=>{cacheWrapRect();
     if(e.target===wrap||e.target===world||e.target===svg){
-      if(e.altKey){
+      if(e.altKey||window.multiSelectMode){
         rubberSelecting=true;
         rubberStart={x:e.clientX,y:e.clientY};
         clearMultiSelection();clearSelection();cancelConnect();
@@ -5157,7 +5180,8 @@ var qrcode = function() {
   var mzLabel  = document.getElementById('mobileZoomLabel');
   var zoomLbl  = document.getElementById('zoomLabel');
   var connectHint = document.getElementById('mobileConnectHint');
-  var mbConnect   = document.getElementById('mbConnect');
+  var selectHint  = document.getElementById('mobileSelectHint');
+  var mbSelect    = document.getElementById('mbSelect');
 
   // Sync zoom label
   var zoomObs = new MutationObserver(function(){
@@ -5169,17 +5193,30 @@ var qrcode = function() {
   document.getElementById('mzIn').addEventListener('click', function(){ document.getElementById('btnZoomIn').click(); });
   document.getElementById('mzOut').addEventListener('click', function(){ document.getElementById('btnZoomOut').click(); });
 
+  // Language button (มุมบนขวา)
+  var mobileLangBtn = document.getElementById('mobileLangBtn');
+  var desktopLangBtn = document.getElementById('btnLang');
+  mobileLangBtn.addEventListener('click', function(){ desktopLangBtn.click(); });
+  var langObs = new MutationObserver(function(){ mobileLangBtn.textContent = desktopLangBtn.textContent; });
+  langObs.observe(desktopLangBtn, {childList:true, characterData:true, subtree:true});
+  mobileLangBtn.textContent = desktopLangBtn.textContent;
+
   // Bottom bar → proxy to real buttons
   document.getElementById('mbAdd').addEventListener('click', function(){ document.getElementById('btnAddBox').click(); });
   document.getElementById('mbDelete').addEventListener('click', function(){ document.getElementById('btnDelete').click(); });
   document.getElementById('mbStash').addEventListener('click', function(){ document.getElementById('stashBtn').click(); });
 
-  // Connect button
-  document.getElementById('mbConnect').addEventListener('click', function(){
-    document.getElementById('btnConnect').click();
-    var isActive = document.getElementById('btnConnect').classList.contains('active');
-    mbConnect.classList.toggle('active', isActive);
-    if(connectHint) connectHint.classList.toggle('show', isActive);
+  // Select mode (multi-select, แทนที่ Alt+ลากซึ่งใช้ไม่ได้บนมือถือ)
+  document.getElementById('mbSelect').addEventListener('click', function(){
+    window.multiSelectMode = !window.multiSelectMode;
+    mbSelect.classList.toggle('active', window.multiSelectMode);
+    if(selectHint) selectHint.classList.toggle('show', window.multiSelectMode);
+    if(window.multiSelectMode){
+      // ปิดโหมดเชื่อมต่อถ้าเปิดอยู่ ป้องกันชนกัน
+      var bc=document.getElementById('btnConnect');
+      if(bc.classList.contains('active')) bc.click();
+      if(connectHint) connectHint.classList.remove('show');
+    }
   });
 
   // FAB
@@ -5200,10 +5237,10 @@ var qrcode = function() {
   fabProxy('fRedo','btnRedo');
   fabProxy('fAddHeader','btnAddHeader');
   fabProxy('fDuplicate','btnDuplicate');
+  fabProxy('fExportPng','btnExportPng');
   fabProxy('fExport','btnExport');
   fabProxy('fImport','btnImport');
   fabProxy('fShare','btnShare');
-  fabProxy('fClear','btnClearCache');
   fabProxy('fNewPage','btnNewPage');
   fabProxy('fReset','btnZoomReset');
 
@@ -5305,15 +5342,16 @@ var qrcode = function() {
       var newDist = dist(t[0],t[1]);
       var newMid  = midPoint(t[0],t[1]);
       var ratio   = newDist / lastDist;
-      // simulate wheel zoom: deltaY < 0 = zoom in
-      // ratio > 1 → zoom in → deltaY = -100*(ratio-1)*10
-      var deltaY = -(ratio - 1) * 800;
-      fireWheelEvent(newMid.x, newMid.y, deltaY, wrapEl);
+      // ต้องบีบนิ้วเปลี่ยนระยะพอสมควรก่อนถึงจะซูม 1 สเต็ป (กันซูมไวเกินตอนบีบนิ้วนิดเดียว)
+      if(Math.abs(ratio - 1) >= 0.035){
+        var deltaY = -(ratio - 1) * 800;
+        fireWheelEvent(newMid.x, newMid.y, deltaY, wrapEl);
+        lastDist = newDist;
+      }
       // pan drift from mid shift
       if(Math.abs(newMid.x - lastMid.x) > 1 || Math.abs(newMid.y - lastMid.y) > 1){
         fireMouseEvent('mousemove', newMid.x, newMid.y, wrapEl);
       }
-      lastDist = newDist;
       lastMid  = newMid;
       e.preventDefault();
     } else if(t.length === 1 && touchPanId !== null){
@@ -5498,7 +5536,7 @@ var qrcode = function() {
       stashBtn:        { title:'กระเป๋าพัก' },
       mobileConnectHint: { text:'🔗 แตะ anchor (จุดสีฟ้า) เพื่อเชื่อมต่อ — แตะ ✕ เพื่อยกเลิก' },
       mbAdd:           { label:'เพิ่ม' },
-      mbConnect:       { label:'เชื่อม' },
+      mbSelect:        { label:'เลือก' },
       mbDelete:        { label:'ลบ' },
       mbStash:         { label:'พัก' },
       mbMore:          { label:'เพิ่มเติม' },
@@ -5506,10 +5544,10 @@ var qrcode = function() {
       fRedo:           { text:'ทำซ้ำ' },
       fAddHeader:      { text:'เพิ่มหัวข้อ' },
       fDuplicate:      { text:'คัดลอกกล่อง' },
+      fExportPng:      { text:'บันทึกเป็นรูป PNG' },
       fExport:         { text:'บันทึก JSON' },
       fImport:         { text:'โหลด JSON' },
       fShare:          { text:'แชร์ลิงก์' },
-      fClear:          { text:'ล้างข้อมูล' },
       fNewPage:        { text:'หน้าใหม่' },
       fReset:          { text:'รีเซ็ตมุมมอง' },
       supTitle:        { text:'สนับสนุนผู้พัฒนา' },
@@ -5558,7 +5596,7 @@ var qrcode = function() {
       stashBtn:        { title:'Stash Panel' },
       mobileConnectHint: { text:'🔗 Tap an anchor (blue dot) to connect — tap ✕ to cancel' },
       mbAdd:           { label:'Add' },
-      mbConnect:       { label:'Connect' },
+      mbSelect:        { label:'Select' },
       mbDelete:        { label:'Delete' },
       mbStash:         { label:'Stash' },
       mbMore:          { label:'More' },
@@ -5566,10 +5604,10 @@ var qrcode = function() {
       fRedo:           { text:'Redo' },
       fAddHeader:      { text:'Add Header' },
       fDuplicate:      { text:'Duplicate Box' },
+      fExportPng:      { text:'Save as PNG' },
       fExport:         { text:'Save JSON' },
       fImport:         { text:'Load JSON' },
       fShare:          { text:'Share Link' },
-      fClear:          { text:'Clear Data' },
       fNewPage:        { text:'New Page' },
       fReset:          { text:'Reset View' },
       supTitle:        { text:'Support the Developer' },
@@ -5636,7 +5674,7 @@ var qrcode = function() {
     if(pdSub && t.pngDialogSub) pdSub.textContent = t.pngDialogSub.text;
 
     // Mobile bottom bar labels
-    ['mbAdd','mbConnect','mbDelete','mbStash','mbMore'].forEach(function(id){
+    ['mbAdd','mbSelect','mbDelete','mbStash','mbMore'].forEach(function(id){
       if(!t[id]) return;
       var btn = document.getElementById(id);
       if(!btn) return;
@@ -5645,7 +5683,7 @@ var qrcode = function() {
     });
 
     // FAB items (text node after .fi span)
-    ['fUndo','fRedo','fAddHeader','fDuplicate','fExport','fImport','fShare','fClear','fNewPage','fReset'].forEach(function(id){
+    ['fExportPng','fUndo','fRedo','fAddHeader','fDuplicate','fExport','fImport','fShare','fNewPage','fReset'].forEach(function(id){
       if(!t[id]) return;
       var el = document.getElementById(id);
       if(!el) return;
