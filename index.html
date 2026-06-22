@@ -25,8 +25,7 @@
   #toolbar button:disabled:hover{background:#2a3242;}
   #toolbar button.active{background:var(--accent);border-color:var(--accent);}
   #toolbar .sep{width:1px;height:28px;background:#3a4358;margin:0 4px;flex-shrink:0;}
-  #toolbar .tb-right{margin-left:auto;display:flex;align-items:center;gap:6px;flex-shrink:0;}
-  #toolbar .tb-zoom{display:flex;align-items:center;gap:4px;background:#222a38;border:1px solid #333c4e;border-radius:9px;padding:3px 5px;}
+  #toolbar .tb-right{margin-left:auto;display:flex;align-items:center;gap:6px;flex-shrink:0;}  #toolbar .tb-zoom{display:flex;align-items:center;gap:4px;background:#222a38;border:1px solid #333c4e;border-radius:9px;padding:3px 5px;}
   #toolbar .tb-zoom button{border:none;background:transparent;padding:5px 9px;font-size:15px;line-height:1;}
   #toolbar .tb-zoom button:hover{background:#3a4358;}
   #toolbar .tb-zoom #zoomLabel{color:#aab4c8;font-size:13px;min-width:42px;text-align:center;}
@@ -467,12 +466,41 @@
   @media (min-width: 768px) {
     #mobileBottomBar, #mobileFab, #mobileFabMenu, #mobileZoomCtrl, #mobileLangBtn, #fabBackdrop, #mobileConnectHint, #mobileSelectHint, #epMobileActions { display: none !important; }
   }
+  /* ===== Project switcher (หลายงาน) ===== */
+  #btnProject{background:#222a38;color:#cfe0ff;border:1px solid #3a4358;border-radius:8px;padding:7px 12px;cursor:pointer;font-size:13px;display:flex;align-items:center;gap:6px;max-width:200px;}
+  #btnProject:hover{background:#2f3a4e;}
+  #btnProject .pj-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:140px;font-weight:600;}
+  #btnProject .pj-caret{color:#8aa0c4;font-size:11px;}
+  #projOverlay{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:300;display:none;align-items:flex-start;justify-content:center;padding-top:80px;}
+  #projOverlay.open{display:flex;}
+  #projPanel{background:var(--panel);border:1px solid #3a4358;border-radius:14px;box-shadow:0 20px 60px rgba(0,0,0,.6);width:min(440px,92vw);max-height:70vh;display:flex;flex-direction:column;overflow:hidden;}
+  #projPanel .pp-head{display:flex;align-items:center;justify-content:space-between;padding:16px 18px;border-bottom:1px solid #2f3850;}
+  #projPanel .pp-head h3{margin:0;color:#e6edf8;font-size:16px;}
+  #projPanel .pp-close{background:none;border:none;color:#9aaac0;font-size:20px;cursor:pointer;line-height:1;}
+  #projList{list-style:none;margin:0;padding:8px;overflow-y:auto;flex:1;}
+  #projList li{display:flex;align-items:center;gap:8px;padding:11px 12px;border-radius:9px;cursor:pointer;color:#cfd8ec;}
+  #projList li:hover{background:#2a3242;}
+  #projList li.active{background:rgba(91,141,239,.18);outline:1px solid var(--accent);}
+  #projList li .pj-ic{font-size:16px;}
+  #projList li .pj-txt{flex:1;overflow:hidden;}
+  #projList li .pj-txt .pj-t{font-weight:600;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  #projList li .pj-txt .pj-m{font-size:11px;color:#8595ad;margin-top:2px;}
+  #projList li .pj-act{display:flex;gap:4px;opacity:0;transition:.12s;}
+  #projList li:hover .pj-act{opacity:1;}
+  #projList li .pj-act button{background:#333c4e;border:none;color:#cfd8ec;border-radius:6px;padding:4px 8px;font-size:12px;cursor:pointer;}
+  #projList li .pj-act button:hover{background:#465169;}
+  #projList li .pj-act button.danger:hover{background:rgba(255,92,92,.25);color:#ffb3b3;}
+  #projPanel .pp-foot{padding:12px 14px;border-top:1px solid #2f3850;}
+  #projPanel .pp-foot button{width:100%;background:var(--accent);border:none;color:#fff;font-weight:600;border-radius:9px;padding:11px;font-size:14px;cursor:pointer;}
+  #projPanel .pp-foot button:hover{filter:brightness(1.08);}
 </style>
 </head>
 <body>
 <div id="toolbar">
   <button id="btnUndo" title="เลิกทำ (Ctrl+Z)" disabled>↩️</button>
   <button id="btnRedo" title="ทำซ้ำ (Ctrl+Y)" disabled>↪️</button>
+  <div class="sep"></div>
+  <button id="btnProject" title="เลือก/สลับงาน"><span class="pj-ic">📁</span><span class="pj-name">งานของฉัน</span><span class="pj-caret">▾</span></button>
   <div class="sep"></div>
   <button id="btnAddBox" title="เพิ่มกล่อง">➕ กล่อง</button>
   <button id="btnAddHeader" title="เพิ่มหัวข้อ">🏷️ หัวข้อ</button>
@@ -514,6 +542,20 @@
   <input type="file" id="fileInput" accept=".json" style="display:none">
 </div>
 
+<!-- Project switcher panel -->
+<div id="projOverlay">
+  <div id="projPanel">
+    <div class="pp-head">
+      <h3>📁 งานทั้งหมด</h3>
+      <button class="pp-close" id="projClose">✕</button>
+    </div>
+    <ul id="projList"></ul>
+    <div class="pp-foot">
+      <button id="projNew">➕ สร้างงานใหม่</button>
+    </div>
+  </div>
+</div>
+
 <!-- Mobile Bottom Bar -->
 <div id="mobileBottomBar" style="display:none;">
   <button class="mb-btn" id="mbAdd"><span class="mb-icon">➕</span><span>เพิ่ม</span></button>
@@ -526,6 +568,7 @@
 <!-- FAB -->
 <button id="mobileFab" style="display:none;">＋</button>
 <div id="mobileFabMenu">
+  <div class="fab-item" id="fProject"><span class="fi">📁</span>งานทั้งหมด</div>
   <div class="fab-item" id="fUndo"><span class="fi">↩️</span>เลิกทำ</div>
   <div class="fab-item" id="fRedo"><span class="fi">↪️</span>ทำซ้ำ</div>
   <div class="fab-item" id="fAddHeader"><span class="fi">🏷️</span>เพิ่มหัวข้อ</div>
@@ -2940,8 +2983,8 @@ var qrcode = function() {
 <!-- CLEAR CACHE DIALOG (mobile) -->
 <div id="clearCacheOverlay" style="position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:530;display:none;align-items:center;justify-content:center;">
   <div style="background:var(--panel);border:1px solid #3a4358;border-radius:16px;box-shadow:0 18px 52px rgba(0,0,0,.6);padding:24px;width:320px;max-width:92vw;">
-    <div style="color:#ff7a7a;font-size:17px;font-weight:700;margin-bottom:8px;">🗑️ ล้างแคช</div>
-    <div style="color:#8b95a8;font-size:13px;line-height:1.5;margin-bottom:20px;">ล้างข้อมูลที่บันทึกไว้ทั้งหมดใช่ไหม? การกระทำนี้ไม่สามารถย้อนกลับได้</div>
+    <div style="color:#ff7a7a;font-size:17px;font-weight:700;margin-bottom:8px;" id="ccTitle">🗑️ ล้างงานนี้</div>
+    <div style="color:#8b95a8;font-size:13px;line-height:1.5;margin-bottom:20px;" id="ccMsg">ล้างข้อมูลเฉพาะงานที่เปิดอยู่นี้ใช่ไหม? งานอื่นไม่กระทบ และย้อนกลับไม่ได้</div>
     <div style="display:flex;gap:10px;justify-content:flex-end;">
       <button id="ccCancel" style="border:none;border-radius:9px;padding:10px 18px;font-size:14px;cursor:pointer;background:#2a3242;color:#cfd8ec;">ยกเลิก</button>
       <button id="ccConfirm" style="border:none;border-radius:9px;padding:10px 18px;font-size:14px;cursor:pointer;background:#c0392b;color:#fff;font-weight:600;">ล้างข้อมูล</button>
@@ -2999,36 +3042,370 @@ var qrcode = function() {
   let connectMode=false,connectSource=null;
   let selectedBox=null,selectedConn=null;
   let layoutDir='down'; // 'down' = top-to-bottom, 'right' = left-to-right
-  const CACHE_KEY='orgchart_autosave';
+  // ===== IndexedDB storage layer =====
+  // เก็บ "ข้อมูลงาน" (ก้อนใหญ่) ใน IndexedDB เพื่อเลี่ยงเพดาน ~5MB ของ localStorage
+  // ส่วน metadata เล็ก ๆ (ทะเบียนงาน/งานปัจจุบัน/ภาษา) ยังอยู่ใน localStorage (อ่าน sync ตอน start)
+  // ใช้ memory-cache คั่นไว้ เพื่อให้โค้ดเดิมที่อ่านแบบ sync ทำงานต่อได้
+  const IDB = (function(){
+    const DB_NAME='orgchart_db', STORE='projects', VER=1;
+    let _db=null, _ready=null;
+    function open(){
+      if(_ready) return _ready;
+      _ready=new Promise((resolve)=>{
+        let req;
+        try{ req=indexedDB.open(DB_NAME,VER); }
+        catch(e){ resolve(null); return; }
+        req.onupgradeneeded=e=>{ const db=e.target.result; if(!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE); };
+        req.onsuccess=e=>{ _db=e.target.result; resolve(_db); };
+        req.onerror=()=>{ resolve(null); };
+      });
+      return _ready;
+    }
+    function get(key){
+      return open().then(db=>{
+        if(!db) return null;
+        return new Promise(res=>{
+          try{ const tx=db.transaction(STORE,'readonly'); const r=tx.objectStore(STORE).get(key);
+            r.onsuccess=()=>res(r.result!==undefined?r.result:null); r.onerror=()=>res(null);
+          }catch(e){ res(null); }
+        });
+      });
+    }
+    function set(key,val){
+      return open().then(db=>{
+        if(!db) return false;
+        return new Promise((res,rej)=>{
+          try{ const tx=db.transaction(STORE,'readwrite'); tx.objectStore(STORE).put(val,key);
+            tx.oncomplete=()=>res(true); tx.onerror=()=>rej(tx.error||new Error('idb write failed')); tx.onabort=()=>rej(tx.error||new Error('idb abort'));
+          }catch(e){ rej(e); }
+        });
+      });
+    }
+    function del(key){
+      return open().then(db=>{
+        if(!db) return false;
+        return new Promise(res=>{
+          try{ const tx=db.transaction(STORE,'readwrite'); tx.objectStore(STORE).delete(key);
+            tx.oncomplete=()=>res(true); tx.onerror=()=>res(false);
+          }catch(e){ res(false); }
+        });
+      });
+    }
+    function keys(){
+      return open().then(db=>{
+        if(!db) return [];
+        return new Promise(res=>{
+          try{ const tx=db.transaction(STORE,'readonly'); const r=tx.objectStore(STORE).getAllKeys();
+            r.onsuccess=()=>res(r.result||[]); r.onerror=()=>res([]);
+          }catch(e){ res([]); }
+        });
+      });
+    }
+    function available(){ return typeof indexedDB!=='undefined' && !!indexedDB; }
+    return {get,set,del,keys,open,available};
+  })();
+
+  // memory cache: projId -> ข้อมูลงาน (object) ; ช่วยให้ save/load ทำงาน sync ได้เหมือนเดิม
+  const _projCache = new Map();
+  // ช่องสื่อสารข้ามแท็บ (แทน storage event เดิม เพราะ IDB ไม่มี event ข้ามแท็บ)
+  let _bc=null; try{ _bc = ('BroadcastChannel' in window) ? new BroadcastChannel('orgchart_sync') : null; }catch(e){ _bc=null; }
+
+  // ===== ระบบหลายงาน (multi-project) =====
+  const LEGACY_KEY = 'orgchart_autosave';     // ช่องเก่า (งานเดี่ยว) — ใช้ migrate
+  const PROJ_INDEX_KEY = 'orgchart_projects';  // ทะเบียนรายชื่องาน
+  const PROJ_CURRENT_KEY = 'orgchart_current'; // id งานที่เปิดอยู่ล่าสุด
+  const projKey = id => 'orgchart_proj_' + id; // key เก็บข้อมูลของแต่ละงาน
+
+  function loadProjIndex(){
+    try{ const r=localStorage.getItem(PROJ_INDEX_KEY); if(r) return JSON.parse(r); }catch(e){}
+    return [];
+  }
+  function saveProjIndex(list){ try{ localStorage.setItem(PROJ_INDEX_KEY, JSON.stringify(list)); }catch(e){} }
+  function newProjId(){
+    var ex=loadProjIndex().map(function(p){return p.id;});
+    var id;
+    do{ id='p'+Date.now().toString(36)+Math.random().toString(36).slice(2,8); }while(ex.indexOf(id)!==-1);
+    return id;
+  }
+
+  // ตั้งค่าทะเบียนงานเริ่มต้น (sync, เบา ๆ ใน localStorage) — ยังไม่ย้ายข้อมูลก้อนใหญ่
+  function ensureProjects(){
+    let list = loadProjIndex();
+    if(list.length===0){
+      const legacy = localStorage.getItem(LEGACY_KEY); // งานเก่าระบบเดี่ยว (ถ้ามี)
+      const id = newProjId();
+      list = [{id, name: legacy ? 'งานเดิม' : 'งานของฉัน', updated:Date.now(), _needMigrate: !!legacy}];
+      saveProjIndex(list);
+      localStorage.setItem(PROJ_CURRENT_KEY, id);
+    }
+    let cur = localStorage.getItem(PROJ_CURRENT_KEY);
+    if(!cur || !list.some(p=>p.id===cur)){ cur = list[0].id; localStorage.setItem(PROJ_CURRENT_KEY, cur); }
+    return cur;
+  }
+
+  let CURRENT_PROJ = ensureProjects();
+  let CACHE_KEY = projKey(CURRENT_PROJ);
+
+  // ย้ายข้อมูลเก่า (localStorage) → IndexedDB ครั้งเดียว แล้วโหลดงานปัจจุบันเข้า memory cache
+  async function bootStorage(){
+    try{
+      // 1) migrate งานเดิมระบบเดี่ยว (orgchart_autosave) ถ้ายังไม่เคยย้าย
+      const legacy = localStorage.getItem(LEGACY_KEY);
+      if(legacy){
+        const list = loadProjIndex();
+        const target = list.find(p=>p._needMigrate) || list[0];
+        if(target){
+          const existing = await IDB.get(projKey(target.id));
+          if(!existing){
+            try{ await IDB.set(projKey(target.id), JSON.parse(legacy)); }catch(e){}
+          }
+          delete target._needMigrate; saveProjIndex(list);
+        }
+        // ลบ legacy ออกจาก localStorage เพื่อคืนพื้นที่ (ข้อมูลอยู่ใน IDB แล้ว)
+        try{ localStorage.removeItem(LEGACY_KEY); }catch(e){}
+      }
+      // 2) migrate งานที่เคยถูกเก็บใน localStorage แบบ projKey (เวอร์ชันก่อนย้าย IDB)
+      const list2 = loadProjIndex();
+      for(const p of list2){
+        const lsRaw = localStorage.getItem(projKey(p.id));
+        if(lsRaw){
+          const existing = await IDB.get(projKey(p.id));
+          if(!existing){ try{ await IDB.set(projKey(p.id), JSON.parse(lsRaw)); }catch(e){} }
+          try{ localStorage.removeItem(projKey(p.id)); }catch(e){}
+        }
+      }
+      // 3) โหลดงานปัจจุบันเข้า memory cache
+      const data = await IDB.get(projKey(CURRENT_PROJ));
+      if(data) _projCache.set(CURRENT_PROJ, data);
+    }catch(e){}
+  }
+
+  function currentProjName(){
+    const p = loadProjIndex().find(p=>p.id===CURRENT_PROJ);
+    return p ? p.name : 'งาน';
+  }
+  // ตัวช่วยเลือกภาษาในส่วนงาน (อ่านภาษาปัจจุบันจาก window ที่ฝั่ง i18n ตั้งไว้)
+  function L(th,en){ return (window.__lang==='en') ? en : th; }
+  function touchProjMeta(){
+    const list = loadProjIndex();
+    const p = list.find(p=>p.id===CURRENT_PROJ);
+    if(p){ p.updated=Date.now(); p.count=boxes.length; saveProjIndex(list); }
+  }
+
   const saveStatus=document.getElementById('saveStatus')||{textContent:'',style:{}};
   let saveTimer=null;
+  // ===== Multi-tab sync state =====
+  const TAB_ID = Math.random().toString(36).slice(2) + Date.now().toString(36); // ตัวระบุแท็บนี้
+  let lastSavedStamp = 0;        // เวลาเซฟล่าสุดที่ "แท็บนี้" รับรู้ (กันรับ event ของตัวเอง)
+  let busyDepth = 0;             // >0 = แท็บนี้กำลังลาก/พิมพ์/แก้อยู่ ห้ามซิงค์แทรก
+  let pendingRemote = null;      // เก็บข้อมูลจากแท็บอื่นที่รอซิงค์ตอนเราว่าง
+  function markBusy(){ busyDepth++; }
+  function markIdle(){ busyDepth = Math.max(0, busyDepth-1); if(busyDepth===0) flushPendingRemote(); }
+  function isBusy(){ return busyDepth>0; }
 
-  function saveToCache(){
+  // เตือน "เซฟไม่ลง" แบบเด้งหนักครั้งเดียว (กันเด้งรัวทุกครั้งที่ autosave พยายาม)
+  let _saveFailAlerted=false;
+  function notifySaveFailed(isQuota){
+    if(_saveFailAlerted) return;
+    _saveFailAlerted=true;
+    setTimeout(function(){
+      if(isQuota){
+        alert(L(
+          '⚠️ พื้นที่จัดเก็บเต็ม — บันทึกอัตโนมัติไม่สำเร็จ\n\nงานล่าสุดยังไม่ถูกเซฟลงเครื่อง เพื่อกันข้อมูลหาย:\n\n1) กดเมนู → "บันทึก JSON" เพื่อเซฟงานนี้เป็นไฟล์ทันที\n2) ลบงานเก่าที่ไม่ใช้ใน "งานทั้งหมด" เพื่อคืนพื้นที่\n3) หรือลบรูปภาพในกล่องที่ไม่จำเป็น (รูปกินพื้นที่มากสุด)\n\nระบบจะพยายามบันทึกใหม่หลังคุณคืนพื้นที่',
+          '⚠️ Storage is full — auto-save failed\n\nYour latest work is NOT saved to the device. To avoid losing data:\n\n1) Menu → "Save JSON" to export this project now\n2) Delete unused projects in "All Projects" to free space\n3) Or remove unnecessary images in boxes (images use the most space)\n\nIt will retry saving once you free up space'
+        ));
+      }else{
+        alert(L(
+          '⚠️ บันทึกไม่สำเร็จ\n\nงานล่าสุดยังไม่ถูกเซฟ แนะนำให้กดเมนู → "บันทึก JSON" เพื่อเซฟงานเป็นไฟล์กันข้อมูลหาย',
+          '⚠️ Save failed\n\nYour latest work is not saved. Use Menu → "Save JSON" to export your work as a file to avoid data loss.'
+        ));
+      }
+    },50);
+  }
+  // เรียกตอนเซฟสำเร็จอีกครั้ง เพื่อรีเซ็ตให้เตือนได้ใหม่ในอนาคต
+  function clearSaveFailFlag(){ _saveFailAlerted=false; }
+
+  function saveToCache(opts){
+    opts = opts || {};
     try{
-      const data={boxes:boxes.map(b=>({id:b.id,x:b.x,y:b.y,text:b.titleEl.innerText,isHeader:b.isHeader,chips:b.chips,fixedW:b.fixedW,fixedH:b.fixedH,headerText:b.headerText||'',image:b.image||null,collapsed:b.collapsed||false,color:b.color||null,borderColor:b.borderColor||null,textColor:b.textColor||null})),conns,floatChips,panX,panY,scale};
-      localStorage.setItem(CACHE_KEY,JSON.stringify(data));
-      saveStatus.textContent='✓ บันทึกอัตโนมัติแล้ว';saveStatus.style.opacity=1;
+      const payload={boxes:boxes.map(b=>({id:b.id,x:b.x,y:b.y,text:b.titleEl.innerText,isHeader:b.isHeader,chips:b.chips,fixedW:b.fixedW,fixedH:b.fixedH,headerText:b.headerText||'',image:b.image||null,collapsed:b.collapsed||false,color:b.color||null,borderColor:b.borderColor||null,textColor:b.textColor||null})),conns,floatChips,panX,panY,scale};
+
+      // ----- Guard A: stamp-check — ของในเครื่อง "ใหม่กว่า" ที่แท็บนี้รับรู้ล่าสุด -----
+      if(!opts.force){
+        try{
+          const cur=_projCache.get(CURRENT_PROJ);
+          if(cur){
+            const curStamp=cur._stamp||0;
+            if(curStamp>lastSavedStamp && cur._tab!==TAB_ID){
+              const curN=(cur.boxes||[]).length;
+              const newN=payload.boxes.length;
+              const ok=confirm(
+                L('มีงาน 2 เวอร์ชันไม่ตรงกัน','Two versions don\'t match')+'\n'+
+                '────────────────────\n'+
+                L('เวอร์ชันในเครื่อง (ล่าสุด): ','In storage (latest): ')+curN+L(' กล่อง',' boxes')+'\n'+
+                L('เวอร์ชันในแท็บนี้ (เก่ากว่า): ','In this tab (older): ')+newN+L(' กล่อง',' boxes')+'\n'+
+                '────────────────────\n'+
+                L('แท็บนี้น่าจะเปิดค้างไว้นาน เลยถือข้อมูลเก่า\nส่วนในเครื่องมีเวอร์ชันที่ใหม่กว่าอยู่',
+                  'This tab was likely left open and holds old data,\nwhile storage has a newer version.')+'\n\n'+
+                L('👉 กด "ยกเลิก" = ใช้เวอร์ชันล่าสุด (แนะนำ)','👉 Press "Cancel" = use the latest version (recommended)')+'\n'+
+                L('👉 กด "ตกลง" = ลบเวอร์ชันล่าสุดทิ้ง แล้วใช้ของเก่าในแท็บนี้แทน','👉 Press "OK" = discard the latest and use this tab\'s old data instead')
+              );
+              if(!ok){
+                applyRemoteData(cur);
+                lastSavedStamp = curStamp;
+                return;
+              }
+              opts.force = true;
+            }
+          }
+        }catch(e){}
+      }
+
+      // ----- Guard B: กันเขียน "ของเล็ก" ทับ "ของใหญ่" เงียบ ๆ -----
+      if(!opts.force){
+        try{
+          const prev=_projCache.get(CURRENT_PROJ);
+          if(prev){
+            const prevN=(prev.boxes||[]).length;
+            const newN=payload.boxes.length;
+            if(prevN>=8 && newN < prevN*0.5){
+              const ok=confirm(
+                L('งานกำลังจะเล็กลงมาก','The project is about to shrink a lot')+'\n'+
+                '────────────────────\n'+
+                L('งานเดิมในเครื่อง: ','Current in storage: ')+prevN+L(' กล่อง',' boxes')+'\n'+
+                L('กำลังจะเขียนทับเป็น: ','About to overwrite with: ')+newN+L(' กล่อง',' boxes')+'\n'+
+                '────────────────────\n'+
+                L('อาจเกิดจากเปิดหลายแท็บ หรือเผลอโหลดไฟล์เก่า',
+                  'May be caused by multiple tabs, or accidentally loading an old file.')+'\n\n'+
+                L('👉 กด "ยกเลิก" = เก็บงานเดิมไว้ ','👉 Press "Cancel" = keep current ')+prevN+L(' กล่อง (แนะนำ)',' boxes (recommended)')+'\n'+
+                L('👉 กด "ตกลง" = ลบงานเดิมทิ้ง เหลือ ','👉 Press "OK" = delete current, keep only ')+newN+L(' กล่อง',' boxes')
+              );
+              if(!ok){
+                applyRemoteData(prev);
+                lastSavedStamp = prev._stamp||0;
+                return;
+              }
+            }
+          }
+        }catch(e){}
+      }
+
+      const stamp=Date.now();
+      payload._stamp=stamp;
+      payload._tab=TAB_ID;
+      payload._n=payload.boxes.length;
+      // เก็บลง memory cache ทันที (sync) เพื่อให้ guard/อ่านครั้งถัดไปเห็นค่าล่าสุด
+      _projCache.set(CURRENT_PROJ, payload);
+      lastSavedStamp=stamp;
+      clearSaveFailFlag();
+      touchProjMeta();
+      saveStatus.style.color='';
+      saveStatus.textContent=L('✓ บันทึกอัตโนมัติแล้ว','✓ Auto-saved');saveStatus.style.opacity=1;
       clearTimeout(saveTimer);saveTimer=setTimeout(()=>{saveStatus.style.opacity=0;},2000);
+      // เขียนลง IndexedDB แบบ async เบื้องหลัง + แจ้งแท็บอื่น
+      const projForThis=CURRENT_PROJ;
+      IDB.set(projKey(projForThis), payload).then(()=>{
+        if(_bc){ try{ _bc.postMessage({type:'save', proj:projForThis, stamp:stamp, tab:TAB_ID}); }catch(e){} }
+      }).catch(err=>{
+        const isQuota = err && (err.name==='QuotaExceededError' || err.code===22 || /quota/i.test((err&&err.name)||'')||/quota/i.test((err&&err.message)||''));
+        saveStatus.textContent = isQuota
+          ? L('⚠️ พื้นที่เต็ม! ยังไม่ได้บันทึก','⚠️ Storage full! Not saved')
+          : L('⚠️ บันทึกไม่สำเร็จ','⚠️ Save failed');
+        saveStatus.style.opacity=1; saveStatus.style.color='#ff7a7a';
+        notifySaveFailed(isQuota);
+      });
+      return;
     }catch(e){}
   }
   function schedSave(){clearTimeout(saveTimer);saveTimer=setTimeout(saveToCache,600);}
 
+  // โหลดงานปัจจุบันจาก memory cache (ถูกเติมจาก IDB ตอน init/สลับงาน)
   function loadFromCache(){
     try{
-      const raw=localStorage.getItem(CACHE_KEY);if(!raw) return false;
-      const data=JSON.parse(raw);
+      const data=_projCache.get(CURRENT_PROJ); if(!data) return false;
       clearTimeout(saveTimer);
       boxes.forEach(b=>b.el.remove());boxes=[];boxMap.clear();headerBoxes.clear();conns=[];clearFloatChips();
       const idMap={};
-      data.boxes.forEach(bd=>{const nb=addBox(bd.x,bd.y,bd.text,bd.isHeader,bd.chips||[],bd.fixedW||null,bd.fixedH||null,bd.headerText||'',bd.image||null);idMap[bd.id]=nb.id;if(bd.collapsed) setBoxCollapsed(nb,true);applyBoxColors(nb,bd.color||null,bd.borderColor||null,bd.textColor||null);});
+      (data.boxes||[]).forEach(bd=>{const nb=addBox(bd.x,bd.y,bd.text,bd.isHeader,bd.chips||[],bd.fixedW||null,bd.fixedH||null,bd.headerText||'',bd.image||null);idMap[bd.id]=nb.id;if(bd.collapsed) setBoxCollapsed(nb,true);applyBoxColors(nb,bd.color||null,bd.borderColor||null,bd.textColor||null);});
       conns=(data.conns||[]).map(c=>({from:idMap[c.from],to:idMap[c.to],fromSide:c.fromSide||'bottom',toSide:c.toSide||'top',color:c.color||null})).filter(c=>c.from&&c.to);(data.floatChips||[]).forEach(fc=>addFloatChip(fc.x,fc.y,fc.text));
       if(data.scale) scale=data.scale;
       if(data.panX!==undefined) panX=data.panX;
       if(data.panY!==undefined) panY=data.panY;
       applyTransform();
+      lastSavedStamp = data._stamp||0;
       return true;
     }catch(e){return false;}
   }
+
+  // ===== ซิงค์ข้อมูลจากแท็บอื่น (ไม่ trigger การเซฟซ้ำ) =====
+  function applyRemoteData(data){
+    try{
+      clearTimeout(saveTimer);
+      boxes.forEach(b=>b.el.remove());boxes=[];boxMap.clear();headerBoxes.clear();conns=[];clearFloatChips();
+      const idMap={};
+      (data.boxes||[]).forEach(bd=>{const nb=addBox(bd.x,bd.y,bd.text,bd.isHeader,bd.chips||[],bd.fixedW||null,bd.fixedH||null,bd.headerText||'',bd.image||null);idMap[bd.id]=nb.id;if(bd.collapsed) setBoxCollapsed(nb,true);applyBoxColors(nb,bd.color||null,bd.borderColor||null,bd.textColor||null);});
+      conns=(data.conns||[]).map(c=>({from:idMap[c.from],to:idMap[c.to],fromSide:c.fromSide||'bottom',toSide:c.toSide||'top',color:c.color||null})).filter(c=>c.from&&c.to);
+      (data.floatChips||[]).forEach(fc=>addFloatChip(fc.x,fc.y,fc.text));
+      if(data.scale) scale=data.scale;
+      if(data.panX!==undefined) panX=data.panX;
+      if(data.panY!==undefined) panY=data.panY;
+      applyTransform();
+    }catch(e){}
+  }
+  // ถ้ามีข้อมูลจากแท็บอื่นค้างไว้ตอนเรายุ่ง → ซิงค์ทันทีที่ว่าง
+  function flushPendingRemote(){
+    if(pendingRemote && !isBusy()){
+      const data=pendingRemote; pendingRemote=null;
+      applyRemoteData(data);
+      lastSavedStamp = data._stamp||0;
+      if(typeof showSyncToast==='function') showSyncToast();
+    }
+  }
+  // โผล่ข้อความเล็ก ๆ บอกว่าเพิ่งซิงค์จากแท็บอื่น
+  function showSyncToast(){
+    saveStatus.textContent=L('↻ อัปเดตจากอีกแท็บแล้ว','↻ Updated from another tab');
+    saveStatus.style.opacity=1;
+    clearTimeout(saveTimer);saveTimer=setTimeout(()=>{saveStatus.style.opacity=0;},2200);
+  }
+  // ฟังการเปลี่ยนแปลงจากแท็บอื่นใน origin เดียวกัน
+  // รับแจ้งจากแท็บอื่นผ่าน BroadcastChannel (แทน storage event เพราะ IDB ไม่มี cross-tab event)
+  function handleRemoteSave(msg){
+    if(!msg || msg.type!=='save') return;
+    if(msg.tab===TAB_ID) return;              // ของแท็บเราเอง ข้าม
+    if(msg.proj!==CURRENT_PROJ) return;        // คนละงาน ไม่เกี่ยว
+    if((msg.stamp||0) <= lastSavedStamp) return;
+    // ดึงข้อมูลล่าสุดของงานนี้จาก IDB แล้วซิงค์
+    IDB.get(projKey(CURRENT_PROJ)).then(data=>{
+      if(!data) return;
+      if((data._stamp||0) <= lastSavedStamp) return;
+      _projCache.set(CURRENT_PROJ, data);
+      if(isBusy()){ pendingRemote=data; return; }  // กำลังลาก/พิมพ์ เก็บไว้ก่อน
+      applyRemoteData(data);
+      lastSavedStamp = data._stamp||0;
+      showSyncToast();
+    });
+  }
+  if(_bc){ _bc.onmessage = function(ev){ handleRemoteSave(ev.data); }; }
+
+  // ===== ผูกสถานะ "กำลังยุ่ง" เพื่อหน่วงการซิงค์จนกว่าจะทำจังหวะนั้นเสร็จ =====
+  // 1) กดเมาส์ค้าง (ลาก/แพน/รีไซส์/ลากชิป) = ยุ่ง จนกว่าจะปล่อย
+  document.addEventListener('mousedown', function(){ markBusy(); }, true);
+  window.addEventListener('mouseup', function(){ markIdle(); });
+  // เผื่อปล่อยเมาส์นอกหน้าต่าง
+  window.addEventListener('blur', function(){ while(isBusy()) markIdle(); });
+  // 2) สัมผัสบนมือถือ
+  document.addEventListener('touchstart', function(){ markBusy(); }, {capture:true,passive:true});
+  window.addEventListener('touchend', function(){ markIdle(); });
+  window.addEventListener('touchcancel', function(){ markIdle(); });
+  // 3) กำลังพิมพ์/แก้ไขข้อความในกล่องหรือ textarea = ยุ่ง จนกว่าจะออกจากการแก้ไข
+  document.addEventListener('focusin', function(e){
+    const t=e.target;
+    if(t && (t.isContentEditable || t.tagName==='TEXTAREA' || t.tagName==='INPUT')) markBusy();
+  });
+  document.addEventListener('focusout', function(e){
+    const t=e.target;
+    if(t && (t.isContentEditable || t.tagName==='TEXTAREA' || t.tagName==='INPUT')) markIdle();
+  });
 
   function abToBase64url(buf){
     let binary='';const bytes=new Uint8Array(buf);
@@ -3184,22 +3561,31 @@ var qrcode = function() {
       const param=location.hash.slice(7);
       const json=await decompressFromParam(param);
       const data=JSON.parse(json);
-      loadSaveData(data);
       history.replaceState(null,'',location.pathname+location.search);
-      saveToCache();
+      // เปิดลิงก์แชร์เป็น "งานใหม่" แยกต่างหาก ไม่ทับงานที่กำลังเปิดอยู่
+      const list=loadProjIndex();
+      const id=newProjId();
+      const nm=L('งานจากลิงก์ ','Shared ')+new Date().toLocaleDateString(window.__lang==='en'?'en-US':'th-TH',{day:'numeric',month:'short'});
+      list.push({id, name:nm, updated:Date.now(), count:(data.boxes||[]).length});
+      saveProjIndex(list);
+      CURRENT_PROJ=id; CACHE_KEY=projKey(id); localStorage.setItem(PROJ_CURRENT_KEY,id);
+      pendingRemote=null; lastSavedStamp=0;
+      loadSaveData(data);
+      saveToCache({force:true});
+      refreshProjBtn();
       return true;
     }catch(e){
-      alert('ลิงก์ที่เปิดไม่ถูกต้องหรือเสียหาย');
+      alert(L('ลิงก์ที่เปิดไม่ถูกต้องหรือเสียหาย','The link is invalid or corrupted'));
       return false;
     }
   }
 
   document.getElementById('btnClearCache').onclick=()=>{
-    if(confirm('ล้างข้อมูลที่บันทึกไว้ทั้งหมดหรือไม่?')){
+    if(confirm(L('ล้างข้อมูลของงานนี้ทั้งหมดหรือไม่?\n(เฉพาะงาน "','Clear all data in this project?\n(Only "')+currentProjName()+L('" — งานอื่นไม่กระทบ)','" — other projects unaffected)'))){
       pushHistory();
       localStorage.removeItem(CACHE_KEY);
       boxes.forEach(b=>b.el.remove());boxes=[];boxMap.clear();headerBoxes.clear();conns=[];clearFloatChips();
-      scale=1;panX=0;panY=0;applyTransform();
+      scale=1;panX=0;panY=0;applyTransform();lastSavedStamp=0;touchProjMeta();
     }
   };
   // clear cache dialog (mobile — ใช้แทน confirm() ที่ถูก block)
@@ -3211,7 +3597,7 @@ var qrcode = function() {
     pushHistory();
     localStorage.removeItem(CACHE_KEY);
     boxes.forEach(b=>b.el.remove());boxes=[];boxMap.clear();headerBoxes.clear();conns=[];clearFloatChips();
-    scale=1;panX=0;panY=0;applyTransform();
+    scale=1;panX=0;panY=0;applyTransform();lastSavedStamp=0;touchProjMeta();
   };
 
   // ===== TOOLBAR OVERFLOW MENU =====
@@ -3245,7 +3631,7 @@ var qrcode = function() {
   };
   // บันทึกแล้วเปิดหน้าใหม่
   document.getElementById('npSave').onclick=()=>{
-    saveToCache();
+    saveToCache({force:true});
     document.getElementById('newPageOverlay').style.display='none';
     doOpenNewPage();
   };
@@ -4921,18 +5307,117 @@ var qrcode = function() {
     };
   })();
 
+  // ===== Project switcher: ฟังก์ชันจัดการหลายงาน =====
+  function refreshProjBtn(){
+    const el=document.querySelector('#btnProject .pj-name');
+    if(el) el.textContent=currentProjName();
+  }
+  // โหลดงานปัจจุบันขึ้นจอ (หรือกล่องตัวอย่างถ้าว่าง)
+  function loadCurrentProject(){
+    if(!loadFromCache()){
+      // งานนี้ยังว่าง — เริ่มด้วยจอเปล่า (ไม่ใส่ตัวอย่าง เพื่อไม่ให้สับสนว่าเป็นงานเก่า)
+      boxes.forEach(b=>b.el.remove());boxes=[];boxMap.clear();headerBoxes.clear();conns=[];clearFloatChips();
+      scale=1;panX=0;panY=0;applyTransform();
+      lastSavedStamp=0;
+    }
+    refreshProjBtn();
+  }
+  // สลับไปงานอื่น (async: ต้องดึงข้อมูลงานใหม่จาก IDB เข้า cache ก่อน)
+  async function switchProject(id){
+    if(id===CURRENT_PROJ){ closeProjPanel(); return; }
+    clearTimeout(saveTimer);
+    if(boxes.length>0) saveToCache({force:true});  // บันทึกงานปัจจุบันก่อน (เขียน IDB เบื้องหลัง)
+    CURRENT_PROJ=id;
+    CACHE_KEY=projKey(id);
+    localStorage.setItem(PROJ_CURRENT_KEY,id);
+    pendingRemote=null; lastSavedStamp=0;
+    closeProjPanel();
+    // ดึงข้อมูลงานที่จะเปิดจาก IDB เข้า memory cache
+    const data = await IDB.get(projKey(id));
+    if(data) _projCache.set(id, data); else _projCache.delete(id);
+    loadCurrentProject();
+  }
+  // สร้างงานใหม่ (ว่างเปล่า) แล้วสลับไปทันที
+  function createProject(){
+    const name=(prompt(L('ตั้งชื่องานใหม่:','Name your new project:'),L('งานใหม่','New Project'))||'').trim();
+    if(name===null) return;
+    const list=loadProjIndex();
+    const id=newProjId();
+    list.push({id, name:name||(L('งาน ','Project ')+(list.length+1)), updated:Date.now(), count:0});
+    saveProjIndex(list);
+    switchProject(id);
+  }
+  // เปลี่ยนชื่องาน
+  function renameProject(id){
+    const list=loadProjIndex();
+    const p=list.find(p=>p.id===id); if(!p) return;
+    const name=(prompt(L('เปลี่ยนชื่องาน:','Rename project:'),p.name)||'').trim();
+    if(!name) return;
+    p.name=name; saveProjIndex(list);
+    refreshProjBtn(); renderProjList();
+  }
+  // ลบงาน (ลบข้อมูลจาก IDB จริง)
+  function deleteProject(id){
+    let list=loadProjIndex();
+    if(list.length<=1){ alert(L('ต้องมีอย่างน้อย 1 งาน ลบงานสุดท้ายไม่ได้','You need at least 1 project. Cannot delete the last one.')); return; }
+    const p=list.find(p=>p.id===id); if(!p) return;
+    if(!confirm(L('ลบงาน "','Delete project "')+p.name+L('" ?\n\nข้อมูลทั้งหมดในงานนี้จะหายถาวร กู้คืนไม่ได้','" ?\n\nAll data in this project will be permanently lost.'))) return;
+    IDB.del(projKey(id));
+    _projCache.delete(id);
+    try{ localStorage.removeItem(projKey(id)); }catch(e){} // เผื่อมีค้างจากระบบเก่า
+    list=list.filter(x=>x.id!==id); saveProjIndex(list);
+    if(id===CURRENT_PROJ){ switchProject(list[0].id); }
+    renderProjList();
+  }
+  // วาดรายการงานใน panel
+  function renderProjList(){
+    const ul=document.getElementById('projList'); if(!ul) return;
+    const list=loadProjIndex().slice().sort((a,b)=>(b.updated||0)-(a.updated||0));
+    ul.innerHTML='';
+    list.forEach(p=>{
+      const li=document.createElement('li');
+      if(p.id===CURRENT_PROJ) li.classList.add('active');
+      const cnt=(p.count!=null)?(p.count+L(' กล่อง',' boxes')):'';
+      const loc=(window.__lang==='en')?'en-US':'th-TH';
+      const when=p.updated?new Date(p.updated).toLocaleString(loc,{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}):'';
+      li.innerHTML='<span class="pj-ic">'+(p.id===CURRENT_PROJ?'📂':'📁')+'</span>'+
+        '<span class="pj-txt"><div class="pj-t"></div><div class="pj-m">'+[cnt,when].filter(Boolean).join(' · ')+'</div></span>'+
+        '<span class="pj-act"><button class="rn">'+L('เปลี่ยนชื่อ','Rename')+'</button><button class="danger del">'+L('ลบ','Delete')+'</button></span>';
+      li.querySelector('.pj-t').textContent=p.name;
+      li.addEventListener('click',e=>{ if(e.target.closest('.pj-act')) return; switchProject(p.id); });
+      li.querySelector('.rn').addEventListener('click',e=>{e.stopPropagation();renameProject(p.id);});
+      li.querySelector('.del').addEventListener('click',e=>{e.stopPropagation();deleteProject(p.id);});
+      ul.appendChild(li);
+    });
+  }
+  // ให้ฝั่ง i18n เรียกรีเฟรชได้เมื่อสลับภาษา
+  window.__refreshProjUI = function(){ refreshProjBtn(); if(document.getElementById('projOverlay').classList.contains('open')) renderProjList(); };
+  function openProjPanel(){ renderProjList(); document.getElementById('projOverlay').classList.add('open'); }
+  function closeProjPanel(){ document.getElementById('projOverlay').classList.remove('open'); }
+  document.getElementById('btnProject').addEventListener('click',openProjPanel);
+  document.getElementById('projClose').addEventListener('click',closeProjPanel);
+  document.getElementById('projNew').addEventListener('click',createProject);
+  document.getElementById('projOverlay').addEventListener('mousedown',e=>{ if(e.target.id==='projOverlay') closeProjPanel(); });
+
   (async function initLoad(){
     // เช็ค flag ที่ inject มาใน HTML — ใช้ได้แม้ blob URL (localStorage แยก origin)
     const isBlank=window.__OPEN_BLANK_PAGE__===true;
-    if(isBlank){ applyTransform(); return; }
+    if(isBlank){ applyTransform(); refreshProjBtn(); return; }
+    // สำคัญ: ต้องโหลด/ย้ายข้อมูลจาก IndexedDB เข้า memory cache ให้เสร็จก่อน ค่อยอ่านงาน
+    try{ await bootStorage(); }catch(e){}
     const loadedFromShare=await loadFromShareHash();
     if(!loadedFromShare && !loadFromCache()){
-      const h1=addBox(320,20,'แผนกองค์กร',true);
-      const n1=addBox(180,130,'สัตว์',false,[{id:'c1',text:'หมา'},{id:'c2',text:'แมว'},{id:'c3',text:'นก'}]);
-      const n2=addBox(480,130,'ผลไม้',false,[{id:'c4',text:'แอปเปิ้ล'},{id:'c5',text:'มะม่วง'}]);
-      conns.push({from:n1.id,to:n2.id,fromSide:'right',toSide:'left'});
+      // งานปัจจุบันว่างจริง ๆ และไม่เคยมีงานใด ๆ มาก่อน → ใส่กล่องตัวอย่างพอเป็นแนว
+      const onlyOneEmpty = loadProjIndex().length<=1;
+      if(onlyOneEmpty){
+        const h1=addBox(320,20,'แผนกองค์กร',true);
+        const n1=addBox(180,130,'สัตว์',false,[{id:'c1',text:'หมา'},{id:'c2',text:'แมว'},{id:'c3',text:'นก'}]);
+        const n2=addBox(480,130,'ผลไม้',false,[{id:'c4',text:'แอปเปิ้ล'},{id:'c5',text:'มะม่วง'}]);
+        conns.push({from:n1.id,to:n2.id,fromSide:'right',toSide:'left'});
+      }
       applyTransform();
     }
+    refreshProjBtn();
   })();
   // ===== STASH PANEL =====
   const stashBtn=document.getElementById('stashBtn');
@@ -5302,8 +5787,8 @@ var qrcode = function() {
     var el = document.getElementById(fabId);
     if(el) el.addEventListener('click', function(){ closeFab(); document.getElementById(btnId).click(); });
   }
-  fabProxy('fUndo','btnUndo');
-  fabProxy('fRedo','btnRedo');
+  fabProxy('fProject','btnProject');
+  fabProxy('fUndo','btnUndo');  fabProxy('fRedo','btnRedo');
   fabProxy('fAddHeader','btnAddHeader');
   fabProxy('fDuplicate','btnDuplicate');
   fabProxy('fExportPng','btnExportPng');
@@ -5319,6 +5804,10 @@ var qrcode = function() {
     el.replaceWith(el.cloneNode(true));
     document.getElementById('fNewPage').addEventListener('click',function(){
       closeFab();
+      var msg=document.getElementById('ccMsg');
+      if(msg) msg.textContent = (window.__lang==='en')
+        ? ('Clear data of "'+currentProjName()+'" only? Other projects unaffected, cannot be undone.')
+        : ('ล้างข้อมูลเฉพาะงาน "'+currentProjName()+'" ใช่ไหม? งานอื่นไม่กระทบ และย้อนกลับไม่ได้');
       document.getElementById('clearCacheOverlay').style.display='flex';
     });
   })();
@@ -5585,6 +6074,10 @@ var qrcode = function() {
       btnDelete:       { title:'ลบที่เลือก',          text:'🗑️ ลบ' },
       btnSupport:      { title:'สนับสนุนผู้พัฒนา',   text:'❤️ สนับสนุน' },
       btnMore:         { title:'เมนูเพิ่มเติม',       text:'⋯ เมนู' },
+      btnProject:      { title:'เลือก/สลับงาน' },
+      fProject:        { text:'งานทั้งหมด' },
+      projPanelTitle:  { text:'📁 งานทั้งหมด' },
+      projNew:         { text:'➕ สร้างงานใหม่' },
       btnLang:         { title:'เปลี่ยนภาษา / Switch Language', text:'🌐 EN' },
       btnZoomOut:      { title:'ซูมออก' },
       btnZoomIn:       { title:'ซูมเข้า' },
@@ -5645,6 +6138,10 @@ var qrcode = function() {
       btnDelete:       { title:'Delete Selected', text:'🗑️ Delete' },
       btnSupport:      { title:'Support Developer', text:'❤️ Support' },
       btnMore:         { title:'More Options',    text:'⋯ Menu' },
+      btnProject:      { title:'Select / Switch Project' },
+      fProject:        { text:'All Projects' },
+      projPanelTitle:  { text:'📁 All Projects' },
+      projNew:         { text:'➕ New Project' },
       btnLang:         { title:'เปลี่ยนภาษา / Switch Language', text:'🌐 TH' },
       btnZoomOut:      { title:'Zoom Out' },
       btnZoomIn:       { title:'Zoom In' },
@@ -5720,6 +6217,19 @@ var qrcode = function() {
       if(t[id].title !== undefined) el.title = t[id].title;
     });
 
+    // ปุ่มเลือกงาน: set เฉพาะ title (ชื่องานเป็น dynamic ไม่แตะ)
+    if(t.btnProject){ var bp=document.getElementById('btnProject'); if(bp) bp.title=t.btnProject.title||bp.title; }
+    // Panel งาน + FAB item
+    setEl('projNew', t.projNew||{});
+    (function(){
+      var h=document.querySelector('#projPanel .pp-head h3'); if(h && t.projPanelTitle) h.textContent=t.projPanelTitle.text;
+      var fp=document.getElementById('fProject');
+      if(fp && t.fProject){ var fi=fp.querySelector('.fi'); fp.textContent=''; if(fi) fp.appendChild(fi); fp.appendChild(document.createTextNode(t.fProject.text)); }
+    })();
+    // บอกภาษาปัจจุบันให้โค้ดส่วนงาน (คนละ scope) อ่านได้ + รีเฟรชรายการถ้าเปิดอยู่
+    window.__lang = lang;
+    if(typeof window.__refreshProjUI === 'function') window.__refreshProjUI();
+
     // Menu items (textContent only)
     ['btnExportPng','btnExport','btnImport','btnShare','btnNewPage','btnClearCache',
      'epBtnAddChip','epBtnSetHeader','epCancel','epSave','stashAdd',
@@ -5787,10 +6297,12 @@ var qrcode = function() {
 
   // Wait for DOM then wire up button
   function init() {
+    window.__lang = currentLang; // บอกภาษาให้ส่วนงานรู้ตั้งแต่แรก (รวมถึงไทย default)
     var btn = document.getElementById('btnLang');
     if(btn) btn.addEventListener('click', toggleLang);
     // Apply saved language on load (if EN; TH is default HTML)
     if(currentLang === 'en') applyLang('en');
+    else if(typeof window.__refreshProjUI === 'function') window.__refreshProjUI();
   }
 
   if(document.readyState === 'loading') {
