@@ -140,6 +140,9 @@
   #stashPanel.drop-target{border-left-color:#4cd964;box-shadow:-6px 0 24px rgba(76,217,100,.45);}
   #stashPanel .spHeader{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid #2f3850;flex-shrink:0;}
   #stashPanel .spHeader span{color:#cfd8ec;font-size:14px;font-weight:600;white-space:nowrap;}
+  .chip.stash-selected{border-color:#4cd964 !important;background:#e3fbe8 !important;box-shadow:0 0 0 2px rgba(76,217,100,.4);}
+  #stashPanel.select-mode .chip{cursor:pointer;}
+  #stashPanel.select-mode .chip-del{display:none !important;}
   #stashPanel .spClose{background:none;border:none;color:#7b879c;font-size:18px;cursor:pointer;padding:0 2px;}
   #stashPanel .spClose:hover{color:#fff;}
   #stashInput{display:flex;gap:8px;padding:10px 14px;border-top:1px solid #2f3850;flex-shrink:0;}
@@ -638,7 +641,18 @@
   <div id="stashBadge">0</div>
   <div id="stashPanel">
     <div id="stashResizeHandle" title="ลากเพื่อปรับขนาด"></div>
-    <div class="spHeader"><span>📦 พื้นที่พัก</span><button class="spClose" id="stashClose">✕</button></div>
+    <div class="spHeader"><span>📦 พื้นที่พัก</span>
+      <div style="display:flex;align-items:center;gap:6px;">
+        <button id="stashSelectBtn" title="เลือกหลายอัน" style="background:#2a3242;color:#cfd8ec;border:1px solid #3a4358;border-radius:7px;padding:5px 10px;font-size:12px;cursor:pointer;">☑️ เลือก</button>
+        <button class="spClose" id="stashClose">✕</button>
+      </div>
+    </div>
+    <div id="stashSelectBar" style="display:none;align-items:center;gap:8px;padding:8px 16px;border-bottom:1px solid #2f3850;background:rgba(76,217,100,.06);">
+      <span id="stashSelCount" style="color:#9fb4c8;font-size:12px;flex:1;">เลือกแล้ว 0</span>
+      <button id="stashSelAll" style="background:#2a3242;color:#cfd8ec;border:1px solid #3a4358;border-radius:7px;padding:5px 9px;font-size:12px;cursor:pointer;">ทั้งหมด</button>
+      <button id="stashSelPull" style="background:#2f6e3f;color:#dfffe6;border:none;border-radius:7px;padding:5px 9px;font-size:12px;cursor:pointer;">⬇️ ดึงลงผัง</button>
+      <button id="stashSelDel" style="background:#7a2b2b;color:#ffd6d6;border:none;border-radius:7px;padding:5px 9px;font-size:12px;cursor:pointer;">🗑️ ลบ</button>
+    </div>
     <div id="stashBody"><div class="drop-zone" id="stashDropZone">ลากไอเท็มมาวางที่นี่</div></div>
     <div id="stashInput"><input id="stashText" placeholder="พิมพ์แล้วกด เพิ่ม"><button id="stashAdd">เพิ่ม</button></div>
   </div>
@@ -4613,10 +4627,27 @@ var qrcode = function() {
     }
   };
   document.getElementById('btnDuplicate').onclick=()=>{
+    // คัดลอกหลายกล่อง (ถ้าเลือกไว้หลายตัว) หรือกล่องเดียว
+    if(selectedBoxes.size>1){
+      pushHistory();
+      const list=Array.from(selectedBoxes);
+      clearMultiSelection();
+      const copies=[];
+      list.forEach(b=>{
+        const nb=addBox(b.x+30,b.y+30,b.titleEl.innerText,b.isHeader,b.chips.map(c=>({text:c.text})),b.fixedW,b.fixedH);
+        applyBoxColors(nb,b.color||null,b.borderColor||null,b.textColor||null);
+        copies.push(nb);
+      });
+      // เลือกชุดที่คัดลอกใหม่ให้เลย จะได้ลากต่อทั้งกลุ่ม
+      copies.forEach(nb=>{ selectedBoxes.add(nb); nb.el.classList.add('multi-selected'); });
+      applyTransform();schedSave();
+      return;
+    }
     if(!selectedBox) return;
     pushHistory();
     const nb=addBox(selectedBox.x+30,selectedBox.y+30,selectedBox.titleEl.innerText,selectedBox.isHeader,selectedBox.chips.map(c=>({text:c.text})),selectedBox.fixedW,selectedBox.fixedH);
-    selectBox(nb);applyTransform();
+    applyBoxColors(nb,selectedBox.color||null,selectedBox.borderColor||null,selectedBox.textColor||null);
+    selectBox(nb);applyTransform();schedSave();
   };
   // ตรวจปุ่มจากตำแหน่งจริงบนแป้น (e.code) เพื่อให้ใช้ได้ทุกภาษา ไม่ต้องสลับเป็น EN
   function isKey(e,letter){
@@ -5438,6 +5469,8 @@ var qrcode = function() {
     localStorage.setItem('orgchart_stash',JSON.stringify(stashItems));
     renderStash();
   }
+  let stashSelectMode=false;
+  let stashSelected=new Set(); // เก็บ index ของชิปที่เลือก
   function renderStash(){
     stashBody.innerHTML='';
     if(stashItems.length===0){
@@ -5445,14 +5478,27 @@ var qrcode = function() {
     } else {
       stashItems.forEach((item,idx)=>{
         const chip=document.createElement('div');chip.className='chip';chip.style.cursor='grab';
+        if(stashSelectMode && stashSelected.has(idx)) chip.classList.add('stash-selected');
         const label=document.createElement('span');label.textContent=item.text;chip.appendChild(label);
         const del=document.createElement('button');del.className='chip-del';del.textContent='✕';del.title='ลบ';
         del.addEventListener('mousedown',e=>e.stopPropagation());
         del.addEventListener('click',e=>{e.stopPropagation();stashItems.splice(idx,1);saveStash();});
         chip.appendChild(del);
-        chip.addEventListener('mousedown',e=>{if(e.target===del) return;e.stopPropagation();startStashChipDrag(e,item,idx,chip);});
+        chip.addEventListener('mousedown',e=>{
+          if(e.target===del) return;
+          if(stashSelectMode){ e.stopPropagation(); return; } // โหมดเลือก: ไม่ลาก
+          e.stopPropagation();startStashChipDrag(e,item,idx,chip);
+        });
         chip.addEventListener('click',e=>{
           if(e.target===del) return;
+          if(stashSelectMode){
+            // โหมดเลือก: คลิก = toggle
+            e.stopPropagation();
+            if(stashSelected.has(idx)){ stashSelected.delete(idx); chip.classList.remove('stash-selected'); }
+            else { stashSelected.add(idx); chip.classList.add('stash-selected'); }
+            updateStashSelBar();
+            return;
+          }
           if(chip._suppressClick){chip._suppressClick=false;return;}
           e.stopPropagation();
           const willShow=!chip.classList.contains('show-del');
@@ -5469,6 +5515,60 @@ var qrcode = function() {
     else{stashBadge.style.display='none';}
     wireStashDrop();
   }
+  function updateStashSelBar(){
+    const c=document.getElementById('stashSelCount');
+    if(c) c.textContent=(window.__lang==='en'?'Selected ':'เลือกแล้ว ')+stashSelected.size;
+  }
+  function setStashSelectMode(on){
+    stashSelectMode=on;
+    stashSelected.clear();
+    stashPanel.classList.toggle('select-mode',on);
+    document.getElementById('stashSelectBar').style.display = on?'flex':'none';
+    const en=(window.__lang==='en');
+    const btn=document.getElementById('stashSelectBtn');
+    if(btn){ btn.textContent = on?(en?'✕ Cancel':'✕ ยกเลิก'):(en?'☑️ Select':'☑️ เลือก'); }
+    const a=document.getElementById('stashSelAll'); if(a) a.textContent=en?'All':'ทั้งหมด';
+    const p=document.getElementById('stashSelPull'); if(p) p.textContent=en?'⬇️ To chart':'⬇️ ดึงลงผัง';
+    const d=document.getElementById('stashSelDel'); if(d) d.textContent=en?'🗑️ Delete':'🗑️ ลบ';
+    updateStashSelBar();
+    renderStash();
+  }
+  document.getElementById('stashSelectBtn').addEventListener('click',()=>setStashSelectMode(!stashSelectMode));
+  document.getElementById('stashSelAll').addEventListener('click',()=>{
+    if(stashSelected.size===stashItems.length){ stashSelected.clear(); }
+    else { stashItems.forEach((_,i)=>stashSelected.add(i)); }
+    updateStashSelBar(); renderStash();
+  });
+  document.getElementById('stashSelDel').addEventListener('click',()=>{
+    if(stashSelected.size===0) return;
+    if(!confirm((window.__lang==='en'?'Delete ':'ลบ ')+stashSelected.size+(window.__lang==='en'?' selected items?':' รายการที่เลือก?'))) return;
+    // ลบจาก index มากไปน้อย กัน index เลื่อน
+    const idxs=Array.from(stashSelected).sort((a,b)=>b-a);
+    idxs.forEach(i=>stashItems.splice(i,1));
+    stashSelected.clear();
+    saveStash(); updateStashSelBar();
+  });
+  document.getElementById('stashSelPull').addEventListener('click',()=>{
+    if(stashSelected.size===0) return;
+    pushHistory();
+    // วางกล่องใหม่กระจายเป็นกริดกลางพื้นที่ที่มองเห็น
+    const idxs=Array.from(stashSelected).sort((a,b)=>a-b);
+    const startWX=(-panX)/scale + 80;          // มุมซ้ายบนของ viewport ในพิกัด world
+    const startWY=(-panY)/scale + 80;
+    const COLS=Math.max(1,Math.ceil(Math.sqrt(idxs.length)));
+    let n=0;
+    idxs.forEach(i=>{
+      const it=stashItems[i]; if(!it) return;
+      const col=n%COLS, row=Math.floor(n/COLS);
+      addBox(startWX+col*180, startWY+row*90, it.text, false, []);
+      n++;
+    });
+    // ลบรายการที่ดึงออกจาก stash (มากไปน้อย)
+    idxs.sort((a,b)=>b-a).forEach(i=>stashItems.splice(i,1));
+    stashSelected.clear();
+    setStashSelectMode(false);
+    saveStash(); applyTransform(); schedSave();
+  });
   function wireStashDrop(){
     const dz=document.getElementById('stashDropZone');
     if(!dz) return;
