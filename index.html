@@ -50,6 +50,7 @@
   .box:active{cursor:grabbing;}
   .box.selected{border-color:var(--accent);box-shadow:0 0 0 3px rgba(91,141,239,.35);}
   .box.multi-selected{border-color:#4cd964;box-shadow:0 0 0 3px rgba(76,217,100,.4);}
+  .chip.multi-selected-chip{border-color:#4cd964 !important;box-shadow:0 0 0 2px rgba(76,217,100,.4) !important;}
   #selectRect{position:fixed;border:1.5px dashed var(--accent);background:rgba(91,141,239,.15);pointer-events:none;z-index:200;display:none;}
   .box.header{background:var(--header-bg);color:var(--header-text);font-weight:700;border-color:#16203a;border-radius:8px;}
   .box.drop-target{border-color:#4cd964;box-shadow:0 0 0 3px rgba(76,217,100,.35);}
@@ -597,7 +598,7 @@
 
 <!-- Mobile connect hint -->
 <div id="mobileConnectHint">🔗 แตะ anchor (จุดสีฟ้า) เพื่อเชื่อมต่อ — แตะ ✕ เพื่อยกเลิก</div>
-<div id="mobileSelectHint">☑️ ลากบนพื้นที่ว่างเพื่อเลือกหลายกล่อง — แตะปุ่ม "เลือก" อีกครั้งเพื่อปิด</div>
+<div id="mobileSelectHint">☑️ แตะกล่องเพื่อเลือก/ยกเลิกเลือก — แตะ "เลือก" อีกครั้งเพื่อปิดโหมด</div>
 
 <div id="canvasWrap">
   <div id="world"><svg id="lines"></svg></div>
@@ -3006,6 +3007,17 @@ var qrcode = function() {
   </div>
 </div>
 
+<!-- GENERIC MOBILE-SAFE CONFIRM DIALOG (แทน window.confirm() ที่ถูก block บนมือถือ/webview บางตัว) -->
+<div id="genConfirmOverlay" style="position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:540;display:none;align-items:center;justify-content:center;">
+  <div style="background:var(--panel);border:1px solid #3a4358;border-radius:16px;box-shadow:0 18px 52px rgba(0,0,0,.6);padding:24px;width:320px;max-width:92vw;">
+    <div style="color:#eaf0fb;font-size:14px;line-height:1.5;margin-bottom:20px;white-space:pre-line;" id="gcMsg"></div>
+    <div style="display:flex;gap:10px;justify-content:flex-end;">
+      <button id="gcCancel" style="border:none;border-radius:9px;padding:10px 18px;font-size:14px;cursor:pointer;background:#2a3242;color:#cfd8ec;">ยกเลิก</button>
+      <button id="gcConfirm" style="border:none;border-radius:9px;padding:10px 18px;font-size:14px;cursor:pointer;background:#c0392b;color:#fff;font-weight:600;">ตกลง</button>
+    </div>
+  </div>
+</div>
+
 <!-- NEW PAGE DIALOG -->
 <div id="newPageOverlay" style="position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:530;display:none;align-items:center;justify-content:center;">
   <div style="background:var(--panel);border:1px solid #3a4358;border-radius:16px;box-shadow:0 18px 52px rgba(0,0,0,.6);padding:24px;width:340px;max-width:92vw;">
@@ -3594,6 +3606,25 @@ var qrcode = function() {
     }
   }
 
+  // ===== Generic mobile-safe confirm (แทน window.confirm ที่ถูก block บนมือถือ/webview บางตัว) =====
+  function genConfirm(message,onYes){
+    const overlay=document.getElementById('genConfirmOverlay');
+    const msgEl=document.getElementById('gcMsg');
+    const yesBtn=document.getElementById('gcConfirm');
+    const noBtn=document.getElementById('gcCancel');
+    if(!overlay||!msgEl||!yesBtn||!noBtn){ if(onYes) onYes(); return; }
+    msgEl.textContent=message;
+    overlay.style.display='flex';
+    function cleanup(){
+      overlay.style.display='none';
+      yesBtn.removeEventListener('click',onYesClick);
+      noBtn.removeEventListener('click',onNoClick);
+    }
+    function onYesClick(){ cleanup(); if(onYes) onYes(); }
+    function onNoClick(){ cleanup(); }
+    yesBtn.addEventListener('click',onYesClick);
+    noBtn.addEventListener('click',onNoClick);
+  }
   document.getElementById('btnClearCache').onclick=()=>{
     if(confirm(L('ล้างข้อมูลของงานนี้ทั้งหมดหรือไม่?\n(เฉพาะงาน "','Clear all data in this project?\n(Only "')+currentProjName()+L('" — งานอื่นไม่กระทบ)','" — other projects unaffected)'))){
       pushHistory();
@@ -3673,7 +3704,7 @@ var qrcode = function() {
 
   let dragBox=null,dragOffset={x:0,y:0},groupDrag=null;
   let dragBoxHistoryPushed=false;
-  let clipboardBox=null;
+  let clipboardBoxes=[];
   let connectDragging=false,previewPath=null;
 
   // GLOBAL click-outside handler — ตัวเดียว ไม่ใช้ capture phase
@@ -3985,6 +4016,18 @@ var qrcode = function() {
     world.appendChild(el);
     const box={id:'b'+(idCounter++),el,x,y,isHeader,chips:[],titleEl,childrenEl,headerEl,fixedW:null,fixedH:null,headerText:headerText||'',image:null,collapsed:false,collapseCount,color:null,borderColor:null,textColor:null};
     boxes.push(box);boxMap.set(box.id,box);if(isHeader) headerBoxes.add(box);
+    childrenEl.addEventListener('mousedown',e=>{
+      if(!e.altKey) return;
+      if(e.target.closest('.chip,.chip-del')) return;
+      e.preventDefault();e.stopPropagation();
+      chipRubberActive=true;chipRubberBox=box;
+      chipRubberStart={x:e.clientX,y:e.clientY};
+      selectedChipIds.clear();selectedChipsBox=null;
+      document.querySelectorAll('.chip.multi-selected-chip').forEach(c=>c.classList.remove('multi-selected-chip'));
+      selectRectEl.style.display='block';
+      selectRectEl.style.left=e.clientX+'px';selectRectEl.style.top=e.clientY+'px';
+      selectRectEl.style.width='0px';selectRectEl.style.height='0px';
+    });
 
     collapseBtn.addEventListener('mousedown',e=>e.stopPropagation());
     collapseBtn.addEventListener('touchstart',e=>e.stopPropagation(),{passive:true});
@@ -4122,7 +4165,7 @@ var qrcode = function() {
     }
     box.closeEdit=function(){ /* no-op: ปิดด้วยปุ่ม/Esc ในแผงแทน */ };
     // dblclick เปิดแผงแก้ไข
-    titleEl.addEventListener('mousedown',e=>e.stopPropagation());
+    titleEl.addEventListener('mousedown',e=>{ if(titleEl.contentEditable==='true') e.stopPropagation(); });
     titleEl.addEventListener('dblclick',e=>{e.stopPropagation();openEdit();});
     // dblclick ที่ตัวกล่อง (นอกชื่อกล่อง) ก็เปิดแผงแก้ไขได้เหมือนกัน
     el.addEventListener('dblclick',e=>{
@@ -4134,6 +4177,18 @@ var qrcode = function() {
     // ===== BOX DRAG =====
     el.addEventListener('mousedown',e=>{
       if(box.attachedTo) return;
+      if(e.altKey||window.multiSelectMode){
+        cacheWrapRect();
+        rubberSelecting=true;
+        rubberStart={x:e.clientX,y:e.clientY};
+        clearMultiSelection();clearSelection();cancelConnect();
+        selectRectEl.style.display='block';
+        selectRectEl.style.left=e.clientX+'px';selectRectEl.style.top=e.clientY+'px';
+        selectRectEl.style.width='0px';selectRectEl.style.height='0px';
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
       if(titleEl.contentEditable==='true'){e.stopPropagation();return;}
       if(e.target.classList.contains('anchor')) return;
       if(e.target.classList.contains('chip')||e.target.classList.contains('chip-del')) return;
@@ -4162,6 +4217,49 @@ var qrcode = function() {
   }
 
   let chipIdCounter=1,chipDrag=null,chipGhost=null;
+  let selectedChipIds=new Set(),selectedChipsBox=null;
+  let chipRubberActive=false,chipRubberStart=null,chipRubberBox=null;
+  window.addEventListener('mousemove',e=>{
+    if(!chipRubberActive) return;
+    const x1=Math.min(chipRubberStart.x,e.clientX),x2=Math.max(chipRubberStart.x,e.clientX);
+    const y1=Math.min(chipRubberStart.y,e.clientY),y2=Math.max(chipRubberStart.y,e.clientY);
+    selectRectEl.style.left=x1+'px';selectRectEl.style.top=y1+'px';
+    selectRectEl.style.width=(x2-x1)+'px';selectRectEl.style.height=(y2-y1)+'px';
+  });
+  window.addEventListener('mouseup',e=>{
+    if(!chipRubberActive) return;
+    chipRubberActive=false;
+    selectRectEl.style.display='none';
+    const r2={left:parseFloat(selectRectEl.style.left),top:parseFloat(selectRectEl.style.top),right:parseFloat(selectRectEl.style.left)+parseFloat(selectRectEl.style.width),bottom:parseFloat(selectRectEl.style.top)+parseFloat(selectRectEl.style.height)};
+    chipRubberBox.childrenEl.querySelectorAll('.chip').forEach(chipEl=>{
+      const cr=chipEl.getBoundingClientRect();
+      if(cr.left<r2.right&&cr.right>r2.left&&cr.top<r2.bottom&&cr.bottom>r2.top){
+        selectedChipIds.add(chipEl.dataset.chipId);
+        chipEl.classList.add('multi-selected-chip');
+      }
+    });
+    if(selectedChipIds.size>0) selectedChipsBox=chipRubberBox;
+    chipRubberBox=null;
+  });
+  function clearChipSelection(){
+    selectedChipIds.clear();selectedChipsBox=null;
+    document.querySelectorAll('.chip.multi-selected-chip').forEach(c=>c.classList.remove('multi-selected-chip'));
+  }
+  window.addEventListener('keydown',e=>{
+    if(selectedChipIds.size===0) return;
+    const ae=document.activeElement;
+    if(ae&&(ae.tagName==='INPUT'||ae.tagName==='TEXTAREA'||ae.isContentEditable)) return;
+    if(e.key==='Delete'||e.key==='Backspace'){
+      e.preventDefault();
+      if(selectedChipsBox){
+        pushHistory();
+        Array.from(selectedChipIds).forEach(id=>removeChip(selectedChipsBox,id));
+      }
+      clearChipSelection();
+    } else if(e.key==='Escape'){
+      clearChipSelection();
+    }
+  });
   function addChip(box,text,existingId){
     if(!text.trim()) return;
     const id=existingId||('c'+(chipIdCounter++));
@@ -4230,9 +4328,22 @@ var qrcode = function() {
     if(el) el.remove();if(box.collapsed) setBoxCollapsed(box,true);redrawLines();
   }
   function startChipDrag(e,box,chipData,chipEl){
-    chipDrag={box,chipData,chipEl};chipEl.classList.add('dragging-chip');
+    const isGroup = selectedChipIds.size>1 && selectedChipsBox===box && selectedChipIds.has(chipData.id);
+    let dragItems;
+    if(isGroup){
+      dragItems = Array.from(selectedChipIds).map(id=>({
+        chipData: box.chips.find(c=>c.id===id),
+        chipEl: box.childrenEl.querySelector(`[data-chip-id="${id}"]`)
+      })).filter(d=>d.chipData&&d.chipEl);
+    } else {
+      clearChipSelection();
+      dragItems = [{chipData,chipEl}];
+    }
+    dragItems.forEach(d=>d.chipEl.classList.add('dragging-chip'));
+    chipDrag={box,chipData,chipEl,dragItems};
     chipGhost=document.createElement('div');chipGhost.className='chip-ghost';
-    chipGhost.textContent=chipData.text;document.body.appendChild(chipGhost);moveChipGhost(e);
+    chipGhost.textContent = isGroup ? dragItems.map(d=>d.chipData.text).join(', ') : chipData.text;
+    document.body.appendChild(chipGhost);moveChipGhost(e);
   }
   function moveChipGhost(e){
     if(!chipGhost) return;
@@ -4249,47 +4360,56 @@ var qrcode = function() {
   }
   function dropChip(e){
     if(!chipDrag) return;
-    chipDrag.chipEl.classList.remove('dragging-chip');
+    const dragItems = chipDrag.dragItems || [{chipData:chipDrag.chipData,chipEl:chipDrag.chipEl}];
+    dragItems.forEach(d=>d.chipEl.classList.remove('dragging-chip'));
     if(chipGhost){chipGhost.remove();chipGhost=null;}
     boxes.forEach(b=>b.el.classList.remove('drop-target'));
     const stashPanelEl=document.getElementById('stashPanel');
     if(stashPanelEl) stashPanelEl.classList.remove('drop-target');
     clearSearchDropHighlight();
+    const fromBox=chipDrag.box;
     const searchBox=getSearchDropBox(e);
-    if(searchBox && searchBox!==chipDrag.box){
+    if(searchBox && searchBox!==fromBox){
       pushHistory();
-      removeChip(chipDrag.box,chipDrag.chipData.id);addChip(searchBox,chipDrag.chipData.text,chipDrag.chipData.id);
-      if(chipDrag.box.collapsed) setBoxCollapsed(chipDrag.box,true);
+      dragItems.forEach(d=>{ removeChip(fromBox,d.chipData.id); addChip(searchBox,d.chipData.text,d.chipData.id); });
+      if(fromBox.collapsed) setBoxCollapsed(fromBox,true);
       if(searchBox.collapsed) setBoxCollapsed(searchBox,true);
       flashSearchedBox(searchBox);
+      clearChipSelection();
       chipDrag=null;return;
     }
     let target=null;
     boxes.forEach(b=>{
       const r=b.el.getBoundingClientRect();
-      if(e.clientX>=r.left&&e.clientX<=r.right&&e.clientY>=r.top&&e.clientY<=r.bottom&&b!==chipDrag.box) target=b;
+      if(e.clientX>=r.left&&e.clientX<=r.right&&e.clientY>=r.top&&e.clientY<=r.bottom&&b!==fromBox) target=b;
     });
     if(target){
       pushHistory();
-      removeChip(chipDrag.box,chipDrag.chipData.id);addChip(target,chipDrag.chipData.text,chipDrag.chipData.id);
-      if(chipDrag.box.collapsed) setBoxCollapsed(chipDrag.box,true);
+      dragItems.forEach(d=>{ removeChip(fromBox,d.chipData.id); addChip(target,d.chipData.text,d.chipData.id); });
+      if(fromBox.collapsed) setBoxCollapsed(fromBox,true);
       if(target.collapsed) setBoxCollapsed(target,true);
+      clearChipSelection();
     } else if(isOverStash(e)){
       pushHistory();
-      removeChip(chipDrag.box,chipDrag.chipData.id);
-      addStashItem(chipDrag.chipData.text);
-      if(chipDrag.box.collapsed) setBoxCollapsed(chipDrag.box,true);
-    } else if(isOverOwnBox(e,chipDrag.box)){
+      dragItems.forEach(d=>{ removeChip(fromBox,d.chipData.id); addStashItem(d.chipData.text); });
+      if(fromBox.collapsed) setBoxCollapsed(fromBox,true);
+      clearChipSelection();
+    } else if(isOverOwnBox(e,fromBox)){
       // dropped back onto its own box -> keep it where it was (no-op)
     } else if(isOverCanvas(e)){
-      // drop on empty canvas -> create a floating chip at drop point
+      // drop on empty canvas -> create floating chip(s) at drop point
       pushHistory();
       const rect=wrap.getBoundingClientRect();
-      const wx=(e.clientX-rect.left-panX)/scale;
-      const wy=(e.clientY-rect.top-panY)/scale;
-      removeChip(chipDrag.box,chipDrag.chipData.id);
-      if(chipDrag.box.collapsed) setBoxCollapsed(chipDrag.box,true);
-      addFloatChip(wx,wy,chipDrag.chipData.text);
+      const baseWx=(e.clientX-rect.left-panX)/scale;
+      const baseWy=(e.clientY-rect.top-panY)/scale;
+      const COLS=Math.max(1,Math.ceil(Math.sqrt(dragItems.length)));
+      dragItems.forEach((d,i)=>{
+        removeChip(fromBox,d.chipData.id);
+        const col=i%COLS,row=Math.floor(i/COLS);
+        addFloatChip(baseWx+col*120, baseWy+row*40, d.chipData.text);
+      });
+      if(fromBox.collapsed) setBoxCollapsed(fromBox,true);
+      clearChipSelection();
       schedSave();
     }
     chipDrag=null;
@@ -4821,16 +4941,35 @@ var qrcode = function() {
       });
       redrawLines();
     }
-    if(!editing&&(e.ctrlKey||e.metaKey)&&isKey(e,'c')&&selectedBox){
+    if(!editing&&(e.ctrlKey||e.metaKey)&&isKey(e,'c')&&(selectedBoxes.size>1||selectedBox)){
       e.preventDefault();
-      clipboardBox={text:selectedBox.titleEl.innerText,isHeader:selectedBox.isHeader,chips:selectedBox.chips.map(c=>({text:c.text})),fixedW:selectedBox.fixedW,fixedH:selectedBox.fixedH,x:selectedBox.x,y:selectedBox.y,image:selectedBox.image||null};
+      if(selectedBoxes.size>1){
+        clipboardBoxes=Array.from(selectedBoxes).map(b=>({text:b.titleEl.innerText,isHeader:b.isHeader,chips:b.chips.map(c=>({text:c.text})),fixedW:b.fixedW,fixedH:b.fixedH,x:b.x,y:b.y,image:b.image||null,color:b.color||null,borderColor:b.borderColor||null,textColor:b.textColor||null}));
+      } else if(selectedBox){
+        clipboardBoxes=[{text:selectedBox.titleEl.innerText,isHeader:selectedBox.isHeader,chips:selectedBox.chips.map(c=>({text:c.text})),fixedW:selectedBox.fixedW,fixedH:selectedBox.fixedH,x:selectedBox.x,y:selectedBox.y,image:selectedBox.image||null,color:selectedBox.color||null,borderColor:selectedBox.borderColor||null,textColor:selectedBox.textColor||null}];
+      }
     }
-    if(!editing&&(e.ctrlKey||e.metaKey)&&isKey(e,'v')&&clipboardBox){
+    if(!editing&&(e.ctrlKey||e.metaKey)&&isKey(e,'v')&&clipboardBoxes.length){
       e.preventDefault();
       pushHistory();
-      const nb=addBox(clipboardBox.x+30,clipboardBox.y+30,clipboardBox.text,clipboardBox.isHeader,clipboardBox.chips,clipboardBox.fixedW,clipboardBox.fixedH,'',clipboardBox.image||null);
-      clipboardBox.x+=30;clipboardBox.y+=30;
-      selectBox(nb);applyTransform();
+      if(clipboardBoxes.length>1){
+        clearMultiSelection();
+        const newBoxes=[];
+        clipboardBoxes.forEach(cb=>{
+          const nb=addBox(cb.x+30,cb.y+30,cb.text,cb.isHeader,cb.chips,cb.fixedW,cb.fixedH,'',cb.image||null);
+          applyBoxColors(nb,cb.color||null,cb.borderColor||null,cb.textColor||null);
+          newBoxes.push(nb);
+        });
+        newBoxes.forEach(nb=>{selectedBoxes.add(nb);nb.el.classList.add('multi-selected');});
+        clipboardBoxes.forEach(cb=>{cb.x+=30;cb.y+=30;});
+        applyTransform();schedSave();
+      } else {
+        const cb=clipboardBoxes[0];
+        const nb=addBox(cb.x+30,cb.y+30,cb.text,cb.isHeader,cb.chips,cb.fixedW,cb.fixedH,'',cb.image||null);
+        applyBoxColors(nb,cb.color||null,cb.borderColor||null,cb.textColor||null);
+        cb.x+=30;cb.y+=30;
+        selectBox(nb);applyTransform();schedSave();
+      }
     }
   });
   // --- rAF-throttled redraw: ไม่ว่าจะเรียกกี่ครั้งใน frame เดียว วาดจริงแค่ครั้งเดียว ---
@@ -5367,6 +5506,9 @@ var qrcode = function() {
     const data = await IDB.get(projKey(id));
     if(data) _projCache.set(id, data); else _projCache.delete(id);
     loadCurrentProject();
+    loadStash();
+    const selBar=document.getElementById('stashSelectBar'); if(selBar) selBar.style.display='none';
+    document.getElementById('stashPanel')?.classList.remove('select-mode');
   }
   // สร้างงานใหม่ (ว่างเปล่า) แล้วสลับไปทันที
   function createProject(){
@@ -5396,6 +5538,7 @@ var qrcode = function() {
     IDB.del(projKey(id));
     _projCache.delete(id);
     try{ localStorage.removeItem(projKey(id)); }catch(e){} // เผื่อมีค้างจากระบบเก่า
+    try{ localStorage.removeItem('orgchart_stash_'+id); }catch(e){}
     list=list.filter(x=>x.id!==id); saveProjIndex(list);
     if(id===CURRENT_PROJ){ switchProject(list[0].id); }
     renderProjList();
@@ -5461,16 +5604,76 @@ var qrcode = function() {
   let stashItems=[];
   let stashOpen=false;
 
+  function stashKey(){ return 'orgchart_stash_'+CURRENT_PROJ; }
+  (function migrateLegacyStash(){
+    try{
+      const legacy=localStorage.getItem('orgchart_stash');
+      if(legacy && !localStorage.getItem(stashKey())){
+        localStorage.setItem(stashKey(), legacy);
+      }
+      if(legacy) localStorage.removeItem('orgchart_stash');
+    }catch(e){}
+  })();
   function loadStash(){
-    try{const raw=localStorage.getItem('orgchart_stash');if(raw) stashItems=JSON.parse(raw);}catch(e){}
+    stashItems=[];
+    try{const raw=localStorage.getItem(stashKey());if(raw) stashItems=JSON.parse(raw);}catch(e){}
+    stashSelected.clear();
+    if(typeof stashSelectMode!=='undefined') stashSelectMode=false;
     renderStash();
   }
   function saveStash(){
-    localStorage.setItem('orgchart_stash',JSON.stringify(stashItems));
+    localStorage.setItem(stashKey(),JSON.stringify(stashItems));
     renderStash();
   }
   let stashSelectMode=false;
   let stashSelected=new Set(); // เก็บ index ของชิปที่เลือก
+
+  // ===== Alt+drag rubber-band select ใน stashBody =====
+  let stashRubber={active:false,startX:0,startY:0,el:null};
+  (function(){
+    const rubberEl=document.createElement('div');
+    rubberEl.style.cssText='position:fixed;border:1.5px dashed #5b8def;background:rgba(91,141,239,.15);pointer-events:none;display:none;z-index:9999;';
+    document.body.appendChild(rubberEl);
+    stashRubber.el=rubberEl;
+
+    stashBody.addEventListener('mousedown',function(e){
+      if(!e.altKey) return;
+      if(e.target.closest('.chip,.drop-zone')) return;
+      e.preventDefault();
+      stashRubber.active=true;
+      stashRubber.startX=e.clientX;
+      stashRubber.startY=e.clientY;
+      rubberEl.style.display='block';
+      rubberEl.style.left=e.clientX+'px'; rubberEl.style.top=e.clientY+'px';
+      rubberEl.style.width='0px'; rubberEl.style.height='0px';
+      stashSelected.clear(); updateStashSelBar(); renderStash();
+    });
+    window.addEventListener('mousemove',function(e){
+      if(!stashRubber.active) return;
+      const x1=Math.min(stashRubber.startX,e.clientX), x2=Math.max(stashRubber.startX,e.clientX);
+      const y1=Math.min(stashRubber.startY,e.clientY), y2=Math.max(stashRubber.startY,e.clientY);
+      rubberEl.style.left=x1+'px'; rubberEl.style.top=y1+'px';
+      rubberEl.style.width=(x2-x1)+'px'; rubberEl.style.height=(y2-y1)+'px';
+    });
+    window.addEventListener('mouseup',function(e){
+      if(!stashRubber.active) return;
+      stashRubber.active=false;
+      rubberEl.style.display='none';
+      const selR={
+        left:  parseFloat(rubberEl.style.left),
+        top:   parseFloat(rubberEl.style.top),
+        right: parseFloat(rubberEl.style.left)+parseFloat(rubberEl.style.width),
+        bottom:parseFloat(rubberEl.style.top) +parseFloat(rubberEl.style.height),
+      };
+      stashBody.querySelectorAll('.chip').forEach(function(chip,idx){
+        const cr=chip.getBoundingClientRect();
+        if(cr.left<selR.right&&cr.right>selR.left&&cr.top<selR.bottom&&cr.bottom>selR.top){
+          stashSelected.add(idx); chip.classList.add('stash-selected');
+        }
+      });
+      updateStashSelBar();
+    });
+  })();
   function renderStash(){
     stashBody.innerHTML='';
     if(stashItems.length===0){
@@ -5478,7 +5681,7 @@ var qrcode = function() {
     } else {
       stashItems.forEach((item,idx)=>{
         const chip=document.createElement('div');chip.className='chip';chip.style.cursor='grab';
-        if(stashSelectMode && stashSelected.has(idx)) chip.classList.add('stash-selected');
+        if(stashSelected.has(idx)) chip.classList.add('stash-selected');
         const label=document.createElement('span');label.textContent=item.text;chip.appendChild(label);
         const del=document.createElement('button');del.className='chip-del';del.textContent='✕';del.title='ลบ';
         del.addEventListener('mousedown',e=>e.stopPropagation());
@@ -5486,13 +5689,12 @@ var qrcode = function() {
         chip.appendChild(del);
         chip.addEventListener('mousedown',e=>{
           if(e.target===del) return;
-          if(stashSelectMode){ e.stopPropagation(); return; } // โหมดเลือก: ไม่ลาก
+          if(stashSelectMode){ e.stopPropagation(); return; }
           e.stopPropagation();startStashChipDrag(e,item,idx,chip);
         });
         chip.addEventListener('click',e=>{
           if(e.target===del) return;
           if(stashSelectMode){
-            // โหมดเลือก: คลิก = toggle
             e.stopPropagation();
             if(stashSelected.has(idx)){ stashSelected.delete(idx); chip.classList.remove('stash-selected'); }
             else { stashSelected.add(idx); chip.classList.add('stash-selected'); }
@@ -5518,6 +5720,8 @@ var qrcode = function() {
   function updateStashSelBar(){
     const c=document.getElementById('stashSelCount');
     if(c) c.textContent=(window.__lang==='en'?'Selected ':'เลือกแล้ว ')+stashSelected.size;
+    const bar=document.getElementById('stashSelectBar');
+    if(bar) bar.style.display = (stashSelectMode||stashSelected.size>0) ? 'flex' : 'none';
   }
   function setStashSelectMode(on){
     stashSelectMode=on;
@@ -5541,29 +5745,29 @@ var qrcode = function() {
   });
   document.getElementById('stashSelDel').addEventListener('click',()=>{
     if(stashSelected.size===0) return;
-    if(!confirm((window.__lang==='en'?'Delete ':'ลบ ')+stashSelected.size+(window.__lang==='en'?' selected items?':' รายการที่เลือก?'))) return;
-    // ลบจาก index มากไปน้อย กัน index เลื่อน
-    const idxs=Array.from(stashSelected).sort((a,b)=>b-a);
-    idxs.forEach(i=>stashItems.splice(i,1));
-    stashSelected.clear();
-    saveStash(); updateStashSelBar();
+    const count=stashSelected.size;
+    genConfirm((window.__lang==='en'?'Delete ':'ลบ ')+count+(window.__lang==='en'?' selected items?':' รายการที่เลือก?'),()=>{
+      // ลบจาก index มากไปน้อย กัน index เลื่อน
+      const idxs=Array.from(stashSelected).sort((a,b)=>b-a);
+      idxs.forEach(i=>stashItems.splice(i,1));
+      stashSelected.clear();
+      saveStash(); updateStashSelBar();
+    });
   });
   document.getElementById('stashSelPull').addEventListener('click',()=>{
     if(stashSelected.size===0) return;
     pushHistory();
-    // วางกล่องใหม่กระจายเป็นกริดกลางพื้นที่ที่มองเห็น
     const idxs=Array.from(stashSelected).sort((a,b)=>a-b);
-    const startWX=(-panX)/scale + 80;          // มุมซ้ายบนของ viewport ในพิกัด world
+    const startWX=(-panX)/scale + 80;
     const startWY=(-panY)/scale + 80;
     const COLS=Math.max(1,Math.ceil(Math.sqrt(idxs.length)));
     let n=0;
     idxs.forEach(i=>{
       const it=stashItems[i]; if(!it) return;
       const col=n%COLS, row=Math.floor(n/COLS);
-      addBox(startWX+col*180, startWY+row*90, it.text, false, []);
+      addFloatChip(startWX+col*140, startWY+row*50, it.text);
       n++;
     });
-    // ลบรายการที่ดึงออกจาก stash (มากไปน้อย)
     idxs.sort((a,b)=>b-a).forEach(i=>stashItems.splice(i,1));
     stashSelected.clear();
     setStashSelectMode(false);
@@ -5579,6 +5783,20 @@ var qrcode = function() {
     });
   }
   function splitItems(text){return text.split(/[,\n]+/).map(s=>s.trim()).filter(Boolean);}
+  window.addEventListener('keydown',e=>{
+    if(stashSelected.size===0) return;
+    const ae=document.activeElement;
+    if(ae&&(ae.tagName==='INPUT'||ae.tagName==='TEXTAREA'||ae.isContentEditable)) return;
+    if(e.key==='Delete'||e.key==='Backspace'){
+      e.preventDefault();
+      const idxs=Array.from(stashSelected).sort((a,b)=>b-a);
+      idxs.forEach(i=>stashItems.splice(i,1));
+      stashSelected.clear();
+      saveStash(); updateStashSelBar();
+    } else if(e.key==='Escape'){
+      stashSelected.clear(); updateStashSelBar(); renderStash();
+    }
+  });
   function addStashItem(text){
     const parts=splitItems(text);
     if(!parts.length) return;
@@ -5635,10 +5853,16 @@ var qrcode = function() {
   // Stash chip drag → to canvas boxes (mousedown-based)
   let stashDrag=null;
   function startStashChipDrag(e,item,idx,chipEl){
+    // ถ้า chip ที่ลากอยู่ในกลุ่มที่เลือกไว้ → ลากทั้งกลุ่ม
+    const isGroupDrag = stashSelected.size>1 && stashSelected.has(idx);
+    const dragItems = isGroupDrag
+      ? Array.from(stashSelected).sort((a,b)=>a-b).map(i=>({item:stashItems[i],idx:i}))
+      : [{item,idx}];
+    const label = isGroupDrag ? dragItems.map(d=>d.item.text).join(', ') : item.text;
     chipEl.classList.add('dragging-chip');
     chipGhost=document.createElement('div');chipGhost.className='chip-ghost';
-    chipGhost.textContent=item.text;document.body.appendChild(chipGhost);
-    stashDrag={item,idx,chipEl};
+    chipGhost.textContent=label;document.body.appendChild(chipGhost);
+    stashDrag={item,idx,chipEl,dragItems};
     moveChipGhost(e);
   }
   const origMouseMove=window.onmousemove;
@@ -5651,13 +5875,14 @@ var qrcode = function() {
     if(chipGhost){chipGhost.remove();chipGhost=null;}
     boxes.forEach(b=>b.el.classList.remove('drop-target'));
     clearSearchDropHighlight();
+    const dragItems = stashDrag.dragItems || [{item:stashDrag.item,idx:stashDrag.idx}];
     const searchBox=getSearchDropBox(e);
     if(searchBox){
       pushHistory();
-      addChip(searchBox,stashDrag.item.text);
-      if(searchBox.collapsed) setBoxCollapsed(searchBox,true);
-      stashItems.splice(stashDrag.idx,1);
+      dragItems.forEach(d=>{ addChip(searchBox,d.item.text); if(searchBox.collapsed) setBoxCollapsed(searchBox,true); });
+      dragItems.map(d=>d.idx).sort((a,b)=>b-a).forEach(i=>stashItems.splice(i,1));
       saveStash();flashSearchedBox(searchBox);
+      stashSelected.clear(); updateStashSelBar(); if(stashSelectMode) setStashSelectMode(false);
       stashDrag=null;return;
     }
     let target=null;
@@ -5667,9 +5892,10 @@ var qrcode = function() {
     });
     if(target){
       pushHistory();
-      addChip(target,stashDrag.item.text);
-      stashItems.splice(stashDrag.idx,1);
+      dragItems.forEach(d=>addChip(target,d.item.text));
+      dragItems.map(d=>d.idx).sort((a,b)=>b-a).forEach(i=>stashItems.splice(i,1));
       saveStash();
+      stashSelected.clear(); updateStashSelBar(); if(stashSelectMode) setStashSelectMode(false);
     }
     stashDrag=null;
   });
@@ -5985,22 +6211,34 @@ var qrcode = function() {
     el.dispatchEvent(evt);
   }
 
+  var touchRubberActive = false;
+
   wrapEl.addEventListener('touchstart', function(e){
     var t = e.touches;
     if(t.length === 1){
       var tgt = t[0].target;
-      if(tgt.closest && tgt.closest('.anchor,.resize-handle,.chip,.chip-del')) return;
+      if(tgt.closest && tgt.closest('.anchor,.resize-handle,.chip,.chip-del,.box')) return;
     }
     if(t.length === 2){
-      // ยกเลิก pan ที่อาจค้างอยู่
+      if(touchRubberActive){ touchRubberActive=false; rubberSelecting=false; selectRectEl.style.display='none'; }
       if(touchPanId !== null){ fireMouseEvent('mouseup', 0, 0, wrapEl); touchPanId = null; }
       lastDist = dist(t[0],t[1]);
       lastMid  = midPoint(t[0],t[1]);
       e.preventDefault();
     } else if(t.length === 1){
-      touchPanId = t[0].identifier;
-      panStartClient = {x:t[0].clientX, y:t[0].clientY};
-      fireMouseEvent('mousedown', t[0].clientX, t[0].clientY, wrapEl);
+      var touch0 = t[0];
+      touchPanId = touch0.identifier;
+      panStartClient = {x:touch0.clientX, y:touch0.clientY};
+      // พื้นที่ว่าง (ไม่ใช่ box) → เริ่ม rubber-band select ทันที
+      touchRubberActive = true;
+      rubberSelecting = true;
+      rubberStart = {x:touch0.clientX, y:touch0.clientY};
+      clearMultiSelection(); clearSelection(); cancelConnect();
+      selectRectEl.style.display = 'block';
+      selectRectEl.style.left   = touch0.clientX + 'px';
+      selectRectEl.style.top    = touch0.clientY + 'px';
+      selectRectEl.style.width  = '0px';
+      selectRectEl.style.height = '0px';
       e.preventDefault();
     }
   }, {passive:false});
@@ -6011,13 +6249,11 @@ var qrcode = function() {
       var newDist = dist(t[0],t[1]);
       var newMid  = midPoint(t[0],t[1]);
       var ratio   = newDist / lastDist;
-      // ต้องบีบนิ้วเปลี่ยนระยะพอสมควรก่อนถึงจะซูม 1 สเต็ป (กันซูมไวเกินตอนบีบนิ้วนิดเดียว)
       if(Math.abs(ratio - 1) >= 0.035){
         var deltaY = -(ratio - 1) * 800;
         fireWheelEvent(newMid.x, newMid.y, deltaY, wrapEl);
         lastDist = newDist;
       }
-      // pan drift from mid shift
       if(Math.abs(newMid.x - lastMid.x) > 1 || Math.abs(newMid.y - lastMid.y) > 1){
         fireMouseEvent('mousemove', newMid.x, newMid.y, wrapEl);
       }
@@ -6026,7 +6262,15 @@ var qrcode = function() {
     } else if(t.length === 1 && touchPanId !== null){
       var touch = Array.from(t).find(function(x){ return x.identifier === touchPanId; });
       if(touch){
-        fireMouseEvent('mousemove', touch.clientX, touch.clientY, wrapEl);
+        if(touchRubberActive){
+          // อัปเดต rubber-band rect โดยตรง
+          var x1=Math.min(rubberStart.x,touch.clientX), x2=Math.max(rubberStart.x,touch.clientX);
+          var y1=Math.min(rubberStart.y,touch.clientY), y2=Math.max(rubberStart.y,touch.clientY);
+          selectRectEl.style.left=(x1)+'px'; selectRectEl.style.top=(y1)+'px';
+          selectRectEl.style.width=(x2-x1)+'px'; selectRectEl.style.height=(y2-y1)+'px';
+        } else {
+          fireMouseEvent('mousemove', touch.clientX, touch.clientY, wrapEl);
+        }
         e.preventDefault();
       }
     }
@@ -6036,7 +6280,26 @@ var qrcode = function() {
     if(e.touches.length < 2){ lastDist = null; lastMid = null; }
     if(e.touches.length === 0 && touchPanId !== null){
       var t = e.changedTouches[0];
-      fireMouseEvent('mouseup', t.clientX, t.clientY, wrapEl);
+      if(touchRubberActive){
+        touchRubberActive = false;
+        rubberSelecting   = false;
+        selectRectEl.style.display = 'none';
+        var selRect = {
+          left:   parseFloat(selectRectEl.style.left),
+          top:    parseFloat(selectRectEl.style.top),
+          right:  parseFloat(selectRectEl.style.left) + parseFloat(selectRectEl.style.width),
+          bottom: parseFloat(selectRectEl.style.top)  + parseFloat(selectRectEl.style.height)
+        };
+        boxes.forEach(function(b){
+          if(b.attachedTo) return;
+          var br = b.el.getBoundingClientRect();
+          if(br.left < selRect.right && br.right > selRect.left && br.top < selRect.bottom && br.bottom > selRect.top){
+            selectedBoxes.add(b); b.el.classList.add('multi-selected');
+          }
+        });
+      } else {
+        fireMouseEvent('mouseup', t.clientX, t.clientY, wrapEl);
+      }
       touchPanId = null;
     }
   }, {passive:false});
@@ -6059,7 +6322,6 @@ var qrcode = function() {
     if(boxEl._mt) return;
     boxEl._mt = true;
     var dragId = null;
-    var dragOff = {x:0,y:0};
 
     boxEl.addEventListener('touchstart', function(e){
       if(e.touches.length !== 1) return;
@@ -6068,7 +6330,6 @@ var qrcode = function() {
       if(t.target.classList.contains('chip')||t.target.classList.contains('chip-del')) return;
       if(t.target.closest && t.target.closest('.resize-handle')) return;
       dragId = t.identifier;
-      // simulate mousedown on box
       var evt = new MouseEvent('mousedown',{bubbles:true,cancelable:true,clientX:t.clientX,clientY:t.clientY,button:0,buttons:1});
       boxEl.dispatchEvent(evt);
       e.stopPropagation();
@@ -6272,6 +6533,7 @@ var qrcode = function() {
       pngGo:           { text:'💾 Download' },
       stashBtn:        { title:'Stash Panel' },
       mobileConnectHint: { text:'🔗 Tap an anchor (blue dot) to connect — tap ✕ to cancel' },
+      mobileSelectHint:  { text:'☑️ Tap boxes to select/deselect — tap "Select" again to exit' },
       mbAdd:           { label:'Add' },
       mbSelect:        { label:'Select' },
       mbDelete:        { label:'Delete' },
@@ -6350,6 +6612,7 @@ var qrcode = function() {
     setEl('stashDropZone', t.stashDropZone||{});
     setEl('stashBtn', t.stashBtn||{});
     setEl('mobileConnectHint', t.mobileConnectHint||{});
+    setEl('mobileSelectHint',  t.mobileSelectHint||{});
     setEl('supTitle', t.supTitle||{});
     setEl('supSub', t.supSub||{});
 
