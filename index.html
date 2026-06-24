@@ -2,6 +2,27 @@
 <html lang="th">
 <head>
 <meta charset="UTF-8">
+<script>
+// localStorage safety shim: blob:/opaque origins (e.g. "open in new tab")
+// block access to window.localStorage and throw SecurityError even on read.
+// Detect that and swap in an in-memory store so the rest of the app runs.
+(function(){
+  var ok=false;
+  try{ var t='__ls_test__'; window.localStorage.setItem(t,'1'); window.localStorage.removeItem(t); ok=true; }catch(e){ ok=false; }
+  if(ok) return;
+  var mem={};
+  var shim={
+    getItem:function(k){ k=String(k); return Object.prototype.hasOwnProperty.call(mem,k)?mem[k]:null; },
+    setItem:function(k,v){ mem[String(k)]=String(v); },
+    removeItem:function(k){ delete mem[String(k)]; },
+    clear:function(){ mem={}; },
+    key:function(i){ var ks=Object.keys(mem); return i<ks.length?ks[i]:null; },
+    get length(){ return Object.keys(mem).length; }
+  };
+  try{ Object.defineProperty(window,'localStorage',{configurable:true,get:function(){return shim;}}); }
+  catch(e){ try{ window.localStorage=shim; }catch(_){} }
+})();
+</script>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Sample Tree|จัดผังองค์กร แผนภูมิสายงาน ฟรี ไม่มีค่าใช้จ่าย  </title>
 <meta name="description" content="เครื่องมือจัดผังองค์กร แผนภูมิสายงาน จัดลำดับโครงสร้าง แบ่งสายงาน ใช้ฟรีทุกฟังก์ชัน ไม่ต้องสมัครสมาชิก ไม่มีค่าใช้จ่าย ใช้งานได้ทันทีบนมือถือและคอมพิวเตอร์">
@@ -3697,7 +3718,7 @@ var qrcode = function() {
     const firstScript=clone.querySelector('script');
     if(firstScript) firstScript.parentNode.insertBefore(flagScript,firstScript);
     else clone.querySelector('head').appendChild(flagScript);
-    const blob=new Blob([new XMLSerializer().serializeToString(clone)],{type:'text/html'});
+    const blob=new Blob(['<!DOCTYPE html>\n'+clone.outerHTML],{type:'text/html'});
     window.open(URL.createObjectURL(blob),'_blank');
   }
 
