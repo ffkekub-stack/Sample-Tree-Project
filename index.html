@@ -3999,6 +3999,24 @@ var qrcode = function() {
       applyTransform();
     }
   });
+  // ดับเบิลคลิกขวาบนพื้นที่ว่าง = เพิ่มหัวข้อ (เบราว์เซอร์ไม่มี event นี้ จึงตรวจจับเอง)
+  let _lastRClickTime=0,_lastRClickX=0,_lastRClickY=0;
+  wrap.addEventListener('contextmenu',e=>{
+    const onEmpty=(e.target===wrap||e.target===world||e.target===svg);
+    if(!onEmpty) return; // คลิกขวาบนกล่อง/ชิป ปล่อยให้ทำงานปกติ
+    e.preventDefault(); // กันเมนูคลิกขวาของเบราว์เซอร์เด้งบัง
+    const now=Date.now();
+    const near=Math.abs(e.clientX-_lastRClickX)<12 && Math.abs(e.clientY-_lastRClickY)<12;
+    if(now-_lastRClickTime<400 && near){
+      _lastRClickTime=0; // รีเซ็ตกันยิงซ้ำ
+      pushHistory();
+      const rect=wrap.getBoundingClientRect();
+      addBox((e.clientX-rect.left-panX)/scale-60,(e.clientY-rect.top-panY)/scale-20,'หัวข้อใหม่',true);
+      applyTransform();
+    }else{
+      _lastRClickTime=now;_lastRClickX=e.clientX;_lastRClickY=e.clientY;
+    }
+  });
   document.getElementById('btnAddBox').onclick=()=>{
     pushHistory();
     const rect=wrap.getBoundingClientRect();
