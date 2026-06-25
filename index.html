@@ -63,11 +63,11 @@
   #canvasWrap.panning{cursor:grabbing;}
   #world{position:absolute;top:0;left:0;transform-origin:0 0;width:1px;height:1px;}
   svg#lines{position:absolute;top:0;left:0;overflow:visible;}
-  .connLine{cursor:pointer;pointer-events:stroke;}
+  .connLine{cursor:pointer;pointer-events:stroke;vector-effect:non-scaling-stroke;}
   .connLine:hover{stroke:#ff5c5c !important;}
   .connLine.connSelected{stroke:#ff5c5c !important;stroke-width:3.5 !important;}
-  .connHit{cursor:pointer;pointer-events:stroke;stroke:transparent;stroke-width:16;fill:none;}
-  .box{position:absolute;min-width:120px;padding:10px 14px 14px 14px;background:var(--box);border:2px solid var(--box-border);border-radius:10px;color:var(--box-text);cursor:grab;user-select:none;box-shadow:0 2px 8px rgba(0,0,0,.25);}
+  .connHit{cursor:pointer;pointer-events:stroke;stroke:transparent;stroke-width:16;fill:none;vector-effect:non-scaling-stroke;}
+  .box{position:absolute;min-width:120px;padding:10px 14px 14px 14px;background:var(--box);border:2px solid var(--box-border);border-radius:10px;color:var(--box-text);cursor:grab;user-select:none;box-shadow:0 2px 8px rgba(0,0,0,.25);contain:layout style;}
   .box:active{cursor:grabbing;}
   .box.selected{border-color:var(--accent);box-shadow:0 0 0 3px rgba(91,141,239,.35);}
   .box.multi-selected{border-color:#4cd964;box-shadow:0 0 0 3px rgba(76,217,100,.4);}
@@ -94,8 +94,8 @@
   .chip{display:inline-flex;align-items:center;gap:6px;background:#e8f0fe;border:1.5px solid #5b8def;border-radius:7px;padding:5px 10px;font-size:13px;color:#1b3a7a;font-weight:500;cursor:grab;user-select:none;white-space:nowrap;transition:box-shadow .1s,transform .1s;position:relative;}
   .chip:hover{box-shadow:0 2px 8px rgba(91,141,239,.35);transform:translateY(-1px);}
   .chip.dragging-chip{opacity:.45;transform:scale(.95);}
-  .chip-del{display:none;background:none;border:none;color:#5b8def;font-size:13px;line-height:1;cursor:pointer;padding:0 0 0 2px;}
-  .chip:hover .chip-del{display:inline;}
+  .chip-del{position:absolute;top:-7px;right:-7px;width:18px;height:18px;display:flex;align-items:center;justify-content:center;background:#5b8def;border:1.5px solid #fff;border-radius:50%;color:#fff;font-size:11px;line-height:1;cursor:pointer;padding:0;opacity:0;pointer-events:none;transition:opacity .1s;box-shadow:0 1px 3px rgba(0,0,0,.3);z-index:5;}
+  .chip:hover .chip-del{opacity:1;pointer-events:auto;}
   .chip-ghost{position:fixed;pointer-events:none;z-index:999;background:#c8daff;border:1.5px solid #5b8def;border-radius:7px;padding:5px 10px;font-size:13px;color:#1b3a7a;font-weight:500;white-space:nowrap;box-shadow:0 4px 16px rgba(0,0,0,.3);opacity:.9;}
   .resize-handle{position:absolute;z-index:10;background:rgba(91,141,239,.0);transition:background .15s;}
   .box:hover .resize-handle,.box.selected .resize-handle{background:rgba(91,141,239,.18);}
@@ -152,7 +152,8 @@
   #stashBtn img{width:64px;height:64px;border-radius:50%;object-fit:cover;}
   #stashBadge{position:fixed;bottom:68px;right:14px;background:var(--accent);color:#fff;font-size:11px;font-weight:700;min-width:20px;height:20px;border-radius:10px;display:none;align-items:center;justify-content:center;padding:0 4px;z-index:301;}
   #stashBody{flex:1;overflow-y:auto;overflow-x:hidden;padding:12px 14px;display:flex;flex-wrap:wrap;gap:8px;align-content:flex-start;}
-  #stashBody .chip{white-space:normal;word-break:break-word;max-width:100%;cursor:grab;}
+  #stashBody .chip{white-space:normal;word-break:break-word;max-width:100%;cursor:grab;padding-right:24px;}
+  #stashBody .chip-del{top:50%;right:4px;transform:translateY(-50%);border:none;box-shadow:none;width:16px;height:16px;}
   #stashPanel{position:fixed;right:0;top:56px;bottom:0;width:0;min-width:0;max-width:80vw;background:var(--panel);border-left:2px solid var(--accent);box-shadow:-6px 0 24px rgba(0,0,0,.5);z-index:250;display:flex;flex-direction:column;overflow:hidden;}
   #stashPanel.resizing{transition:none !important;}
   #stashPanel:not(.resizing){transition:width .18s ease;}
@@ -310,8 +311,10 @@
     .box-title { font-size: 16px !important; }
     .chip { padding: 7px 12px 7px 10px !important; font-size: 14px !important; }
     /* chip delete button: no hover on touch devices, so reveal it via tap (JS toggles .show-del) instead */
-    .chip-del { display: none !important; min-width: 26px; min-height: 26px; font-size: 16px !important; align-items: center; justify-content: center; }
-    .chip.show-del .chip-del { display: inline-flex !important; }
+    .chip-del { width: 24px !important; height: 24px !important; top: -9px !important; right: -9px !important; font-size: 13px !important; opacity: 0; pointer-events: none; }
+    #stashBody .chip { padding-right: 32px !important; }
+    #stashBody .chip-del { top: 50% !important; right: 6px !important; transform: translateY(-50%) !important; }
+    .chip.show-del .chip-del { opacity: 1 !important; pointer-events: auto !important; }
     .chip.show-del { box-shadow: 0 0 0 2px rgba(91,141,239,.45); }
     .box .anchor { width: 22px !important; height: 22px !important; }
     .anchor.top { top: -11px !important; }
@@ -3084,6 +3087,7 @@ var qrcode = function() {
   const boxMap=new Map(); // id→box lookup O(1)
   const headerBoxes=new Set(); // เฉพาะ header box สำหรับ applyTransform loop
   let _wrapRect=null;     // cache getBoundingClientRect ระหว่าง drag
+  let _defaultLineColor=''; // cache สีเส้น default ต่อรอบ redraw (กันเรียก getComputedStyle ทุกเส้น)
   function getWrapRect(){return _wrapRect||(wrap.getBoundingClientRect());}
   let floatChips=[],floatChipIdCounter=1;
   let connectMode=false,connectSource=null;
@@ -3097,14 +3101,29 @@ var qrcode = function() {
     const DB_NAME='orgchart_db', STORE='projects', VER=1;
     let _db=null, _ready=null;
     function open(){
+      if(_db) return Promise.resolve(_db);
       if(_ready) return _ready;
       _ready=new Promise((resolve)=>{
         let req;
         try{ req=indexedDB.open(DB_NAME,VER); }
-        catch(e){ resolve(null); return; }
+        catch(e){ _ready=null; resolve(null); return; }
         req.onupgradeneeded=e=>{ const db=e.target.result; if(!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE); };
-        req.onsuccess=e=>{ _db=e.target.result; resolve(_db); };
-        req.onerror=()=>{ resolve(null); };
+        req.onsuccess=e=>{
+          _db=e.target.result;
+          // กัน DB เพี้ยน: ถ้าเปิดได้แต่ไม่มี object store ที่ต้องใช้ → ลบ DB ทิ้งแล้วสร้างใหม่
+          if(!_db.objectStoreNames.contains(STORE)){
+            try{ _db.close(); }catch(_){}
+            _db=null; _ready=null;
+            var delReq=indexedDB.deleteDatabase(DB_NAME);
+            delReq.onsuccess=delReq.onerror=delReq.onblocked=function(){ open().then(resolve); };
+            return;
+          }
+          // ถ้า connection ถูกปิด (เช่น แท็บอื่นสั่ง upgrade) ให้ลืม cache เพื่อเปิดใหม่ครั้งหน้า
+          _db.onclose=()=>{ _db=null; _ready=null; };
+          _db.onversionchange=()=>{ try{ _db.close(); }catch(_){} _db=null; _ready=null; };
+          resolve(_db);
+        };
+        req.onerror=()=>{ _ready=null; resolve(null); };
       });
       return _ready;
     }
@@ -3118,15 +3137,30 @@ var qrcode = function() {
         });
       });
     }
-    function set(key,val){
-      return open().then(db=>{
-        if(!db) return false;
-        return new Promise((res,rej)=>{
-          try{ const tx=db.transaction(STORE,'readwrite'); tx.objectStore(STORE).put(val,key);
-            tx.oncomplete=()=>res(true); tx.onerror=()=>rej(tx.error||new Error('idb write failed')); tx.onabort=()=>rej(tx.error||new Error('idb abort'));
-          }catch(e){ rej(e); }
-        });
+    function _setOnce(db,key,val){
+      return new Promise((res,rej)=>{
+        try{ const tx=db.transaction(STORE,'readwrite'); tx.objectStore(STORE).put(val,key);
+          tx.oncomplete=()=>res(true); tx.onerror=()=>rej(tx.error||new Error('idb write failed')); tx.onabort=()=>rej(tx.error||new Error('idb abort'));
+        }catch(e){ rej(e); }
       });
+    }
+    function set(key,val){
+      var attempts=0, MAX=3;
+      function tryWrite(){
+        return open().then(db=>{
+          if(!db) return false; // เปิด DB ไม่ได้เลย (เช่น โหมดส่วนตัวบางเบราว์เซอร์) — ไม่ถือว่า error เด้ง
+          return _setOnce(db,key,val).catch(err=>{
+            // โควต้าเต็มจริง — ไม่ต้อง retry ส่งต่อให้ caller เตือน
+            var quota = err && (err.name==='QuotaExceededError' || err.code===22 || /quota/i.test((err&&err.name)||'') || /quota/i.test((err&&err.message)||''));
+            attempts++;
+            if(quota || attempts>=MAX) throw err;
+            // พลาดชั่วคราว (connection ปิด/transaction ชน) — ลืม db แล้วเปิดใหม่ ลองอีกครั้ง
+            _db=null; _ready=null;
+            return new Promise(r=>setTimeout(r, 120*attempts)).then(tryWrite);
+          });
+        });
+      }
+      return tryWrite();
     }
     function del(key){
       return open().then(db=>{
@@ -3344,7 +3378,6 @@ var qrcode = function() {
       // เก็บลง memory cache ทันที (sync) เพื่อให้ guard/อ่านครั้งถัดไปเห็นค่าล่าสุด
       _projCache.set(CURRENT_PROJ, payload);
       lastSavedStamp=stamp;
-      clearSaveFailFlag();
       touchProjMeta();
       saveStatus.style.color='';
       saveStatus.textContent=L('✓ บันทึกอัตโนมัติแล้ว','✓ Auto-saved');saveStatus.style.opacity=1;
@@ -3352,8 +3385,10 @@ var qrcode = function() {
       // เขียนลง IndexedDB แบบ async เบื้องหลัง + แจ้งแท็บอื่น
       const projForThis=CURRENT_PROJ;
       IDB.set(projKey(projForThis), payload).then(()=>{
+        clearSaveFailFlag();
         if(_bc){ try{ _bc.postMessage({type:'save', proj:projForThis, stamp:stamp, tab:TAB_ID}); }catch(e){} }
       }).catch(err=>{
+        try{ window.__lastSaveError = (err&&(err.name+': '+err.message))||String(err); console.error('[save] IDB write failed:', err); }catch(_){}
         const isQuota = err && (err.name==='QuotaExceededError' || err.code===22 || /quota/i.test((err&&err.name)||'')||/quota/i.test((err&&err.message)||''));
         saveStatus.textContent = isQuota
           ? L('⚠️ พื้นที่เต็ม! ยังไม่ได้บันทึก','⚠️ Storage full! Not saved')
@@ -3812,6 +3847,13 @@ var qrcode = function() {
     _applyTransformOnly();
     redrawLines();
   }
+  // ตอนซูม: SVG เส้นอยู่ใน #world อยู่แล้ว จึงถูก scale ตาม transform โดยอัตโนมัติ
+  // ไม่ต้องวาดเส้นใหม่ ยกเว้นมี header box (ซึ่งต้านการซูมด้วย scale(1/scale)
+  // ทำให้จุดต่อของมันเลื่อนเมื่อ scale เปลี่ยน) จึงค่อย redraw เฉพาะกรณีนั้น
+  function applyTransformForZoom(){
+    _applyTransformOnly();
+    if(headerBoxes.size>0) redrawLines();
+  }
   wrap.addEventListener('wheel',e=>{
     e.preventDefault();
     const rect=wrap.getBoundingClientRect();
@@ -3819,17 +3861,17 @@ var qrcode = function() {
     const wx=(mx-panX)/scale,wy=(my-panY)/scale;
     const d=e.deltaY<0?1.1:1/1.1;
     scale=Math.min(Math.max(scale*d,0.02),20);
-    panX=mx-wx*scale;panY=my-wy*scale;applyTransform();
+    panX=mx-wx*scale;panY=my-wy*scale;applyTransformForZoom();
   },{passive:false});
   document.getElementById('btnZoomIn').onclick=()=>zoomBy(1.2);
   document.getElementById('btnZoomOut').onclick=()=>zoomBy(1/1.2);
-  document.getElementById('btnZoomReset').onclick=()=>{scale=1;panX=0;panY=0;applyTransform();schedSave();};
+  document.getElementById('btnZoomReset').onclick=()=>{scale=1;panX=0;panY=0;applyTransformForZoom();schedSave();};
   function zoomBy(f){
     const rect=wrap.getBoundingClientRect();
     const mx=rect.width/2,my=rect.height/2;
     const wx=(mx-panX)/scale,wy=(my-panY)/scale;
     scale=Math.min(Math.max(scale*f,0.02),20);
-    panX=mx-wx*scale;panY=my-wy*scale;applyTransform();
+    panX=mx-wx*scale;panY=my-wy*scale;applyTransformForZoom();
   }
   let panning=false,panStart=null;
   // cache wrapRect ตอนเริ่ม interaction แล้วเคลียร์ตอนปล่อย
@@ -4737,6 +4779,7 @@ var qrcode = function() {
     previewPath.setAttribute('stroke','#5b8def');
     previewPath.setAttribute('stroke-width','3');
     previewPath.setAttribute('stroke-dasharray','7 5');
+    previewPath.setAttribute('vector-effect','non-scaling-stroke');
     previewPath.style.pointerEvents='none';
     svg.appendChild(previewPath);
     updatePreviewLine(ev);
@@ -5007,17 +5050,26 @@ var qrcode = function() {
   function _doRedrawLines(){
     while(svg.firstChild) svg.removeChild(svg.firstChild);
     let maxX=2000,maxY=2000;
-    boxes.forEach(b=>{maxX=Math.max(maxX,b.x+b.el.offsetWidth+400);maxY=Math.max(maxY,b.y+b.el.offsetHeight+400);});
+    // อ่านขนาดกล่องครั้งเดียว เก็บไว้ใช้ซ้ำ (กัน forced reflow ซ้ำ ๆ)
+    const dims=new Map();
+    boxes.forEach(b=>{
+      const w=b.el.offsetWidth, h=b.el.offsetHeight;
+      dims.set(b, {w:w, h:h});
+      maxX=Math.max(maxX,b.x+w+400);maxY=Math.max(maxY,b.y+h+400);
+    });
     svg.setAttribute('width',maxX);svg.setAttribute('height',maxY);
     world.style.width=maxX+'px';world.style.height=maxY+'px';
+    // อ่านสีเส้น default ครั้งเดียวต่อรอบ แทนที่จะเรียก getComputedStyle ทุกเส้น
+    _defaultLineColor=getComputedStyle(document.documentElement).getPropertyValue('--line');
     conns.forEach(c=>{
       const a=boxMap.get(c.from),b=boxMap.get(c.to);
       if(!a||!b) return;
-      drawElbow(anchorPoint(a,c.fromSide||'bottom'),anchorPoint(b,c.toSide||'top'),c.fromSide||'bottom',c.toSide||'top',c);
+      drawElbow(anchorPoint(a,c.fromSide||'bottom',dims.get(a)),anchorPoint(b,c.toSide||'top',dims.get(b)),c.fromSide||'bottom',c.toSide||'top',c);
     });
   }
-  function anchorPoint(box,side){
-    const w=box.el.offsetWidth*(box.isHeader?1/scale:1),h=box.el.offsetHeight*(box.isHeader?1/scale:1);
+  function anchorPoint(box,side,dim){
+    dim=dim||{w:box.el.offsetWidth,h:box.el.offsetHeight};
+    const w=dim.w*(box.isHeader?1/scale:1),h=dim.h*(box.isHeader?1/scale:1);
     const cx=box.x+w/2,cy=box.y+h/2;
     if(side==='bottom') return{x:cx,y:box.y+h};if(side==='top') return{x:cx,y:box.y};
     if(side==='left') return{x:box.x,y:cy};if(side==='right') return{x:box.x+w,y:cy};
@@ -5030,21 +5082,26 @@ var qrcode = function() {
     else if(!hA&&!hB){const my=(p1.y+p2.y)/2;d=Math.abs(p1.x-p2.x)<2?`M${p1.x} ${p1.y}L${p2.x} ${p2.y}`:`M${p1.x} ${p1.y}L${p1.x} ${my}L${p2.x} ${my}L${p2.x} ${p2.y}`;}
     else if(hA&&!hB) d=`M${p1.x} ${p1.y}L${p2.x} ${p1.y}L${p2.x} ${p2.y}`;
     else d=`M${p1.x} ${p1.y}L${p1.x} ${p2.y}L${p2.x} ${p2.y}`;
+    const frag=document.createDocumentFragment();
     const hit=document.createElementNS('http://www.w3.org/2000/svg','path');
     hit.setAttribute('d',d);hit.setAttribute('class','connHit');
     hit.addEventListener('click',e=>{e.stopPropagation();clearSelection();selectConn(connObj);});
-    svg.appendChild(hit);
+    frag.appendChild(hit);
     const path=document.createElementNS('http://www.w3.org/2000/svg','path');
     path.setAttribute('d',d);path.setAttribute('class','connLine'+(selectedConn===connObj?' connSelected':''));
-    const lineColor=(connObj&&connObj.color)||getComputedStyle(document.documentElement).getPropertyValue('--line');
+    const lineColor=(connObj&&connObj.color)||_defaultLineColor;
     path.setAttribute('stroke',lineColor);
     path.setAttribute('stroke-width',2.5);path.setAttribute('fill','none');
     path.setAttribute('stroke-linecap','round');path.setAttribute('stroke-linejoin','round');
-    svg.appendChild(path);
-    const dot=document.createElementNS('http://www.w3.org/2000/svg','circle');
-    dot.setAttribute('cx',p2.x);dot.setAttribute('cy',p2.y);dot.setAttribute('r',4);
-    dot.setAttribute('fill',lineColor);
-    svg.appendChild(dot);
+    frag.appendChild(path);
+    const dot=document.createElementNS('http://www.w3.org/2000/svg','path');
+    dot.setAttribute('d',`M${p2.x} ${p2.y}L${p2.x} ${p2.y}`);
+    dot.setAttribute('stroke',lineColor);
+    dot.setAttribute('stroke-width',8);
+    dot.setAttribute('stroke-linecap','round');
+    dot.setAttribute('vector-effect','non-scaling-stroke');
+    frag.appendChild(dot);
+    svg.appendChild(frag);
   }
   document.getElementById('btnExport').onclick=()=>{
     const data={boxes:boxes.map(b=>({id:b.id,x:b.x,y:b.y,text:b.titleEl.innerText,isHeader:b.isHeader,chips:b.chips,fixedW:b.fixedW,fixedH:b.fixedH,headerText:b.headerText||'',image:b.image||null,collapsed:b.collapsed||false,color:b.color||null,borderColor:b.borderColor||null,textColor:b.textColor||null})),conns,floatChips};
@@ -5643,7 +5700,8 @@ var qrcode = function() {
     renderStash();
   }
   function saveStash(){
-    localStorage.setItem(stashKey(),JSON.stringify(stashItems));
+    try{ localStorage.setItem(stashKey(),JSON.stringify(stashItems)); }
+    catch(e){ try{ console.error('[stash] save failed:', e); }catch(_){ } }
     renderStash();
   }
   let stashSelectMode=false;
@@ -5903,21 +5961,24 @@ var qrcode = function() {
       dragItems.forEach(d=>{ addChip(searchBox,d.item.text); if(searchBox.collapsed) setBoxCollapsed(searchBox,true); });
       dragItems.map(d=>d.idx).sort((a,b)=>b-a).forEach(i=>stashItems.splice(i,1));
       saveStash();flashSearchedBox(searchBox);
-      stashSelected.clear(); updateStashSelBar(); if(stashSelectMode) setStashSelectMode(false);
-      stashDrag=null;return;
+    } else {
+      let target=null;
+      boxes.forEach(b=>{
+        const r=b.el.getBoundingClientRect();
+        if(e.clientX>=r.left&&e.clientX<=r.right&&e.clientY>=r.top&&e.clientY<=r.bottom) target=b;
+      });
+      if(target){
+        pushHistory();
+        dragItems.forEach(d=>addChip(target,d.item.text));
+        dragItems.map(d=>d.idx).sort((a,b)=>b-a).forEach(i=>stashItems.splice(i,1));
+        saveStash();
+      }
     }
-    let target=null;
-    boxes.forEach(b=>{
-      const r=b.el.getBoundingClientRect();
-      if(e.clientX>=r.left&&e.clientX<=r.right&&e.clientY>=r.top&&e.clientY<=r.bottom) target=b;
-    });
-    if(target){
-      pushHistory();
-      dragItems.forEach(d=>addChip(target,d.item.text));
-      dragItems.map(d=>d.idx).sort((a,b)=>b-a).forEach(i=>stashItems.splice(i,1));
-      saveStash();
-      stashSelected.clear(); updateStashSelBar(); if(stashSelectMode) setStashSelectMode(false);
-    }
+    // จบการลากแล้วเคลียร์การเลือก/ปิดโหมดเสมอ ไม่ว่าจะวางโดนกล่องหรือวางบนที่ว่าง
+    stashSelected.clear();
+    updateStashSelBar();
+    if(stashSelectMode) setStashSelectMode(false);
+    else renderStash();
     stashDrag=null;
   });
 
